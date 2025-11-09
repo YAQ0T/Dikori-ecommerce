@@ -28,11 +28,26 @@ const DEFAULT_RECAPTCHA_MIN_SCORE = Number.isFinite(ENV_MIN_SCORE)
   ? ENV_MIN_SCORE
   : 0.5;
 
+const isIOSAppRequest = (req) => {
+  if (!req || typeof req.get !== "function") {
+    return false;
+  }
+
+  const header = req.get("x-dikori-client") || req.get("x-app-client");
+  if (!header) return false;
+
+  return String(header).trim().toLowerCase() === "ios-app";
+};
+
 async function ensureRecaptcha(req, res) {
   if (
     process.env.NODE_ENV === "test" ||
     process.env.RECAPTCHA_TEST_BYPASS === "1"
   ) {
+    return true;
+  }
+
+  if (isIOSAppRequest(req)) {
     return true;
   }
 
