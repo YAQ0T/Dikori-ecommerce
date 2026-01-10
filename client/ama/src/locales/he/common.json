@@ -84,6 +84,12 @@
         "img": "https://i.imgur.com/S9rjrsh.png"
       },
       {
+        "key": "carpentry",
+        "label": "لوازم نجارين",
+        "value": "لوازم نجارين",
+        "img": "https://i.imgur.com/aPYhaQW.png"
+      },
+      {
         "key": "doorHandles",
         "label": "ידיות לדלתות",
         "value": "مقابض ابواب",

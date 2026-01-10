@@ -22,6 +22,7 @@ const {
   mapLocalizedForResponse,
 } = require("../utils/localized");
 const { queueOrderSummarySMS } = require("../utils/orderSms");
+const { issuePaymentToken } = require("../utils/paymentTokens");
 const DEFAULT_RECAPTCHA_ACTION = "checkout";
 const ENV_MIN_SCORE = Number(process.env.RECAPTCHA_MIN_SCORE);
 const DEFAULT_RECAPTCHA_MIN_SCORE = Number.isFinite(ENV_MIN_SCORE)
@@ -143,6 +144,15 @@ const toDisplayName = (raw) => {
   const normalized = ensureLocalizedObject(raw);
   return normalized.ar || normalized.he || "منتج";
 };
+
+function isOutOfStock(variantDoc) {
+  const qty = Number(
+    variantDoc?.stock && typeof variantDoc.stock.inStock !== "undefined"
+      ? variantDoc.stock.inStock
+      : 0
+  );
+  return !Number.isFinite(qty) || qty <= 0;
+}
 
 const resolveItemName = ({
   requestedName,
@@ -381,6 +391,14 @@ router.post("/", verifyTokenOptional, async (req, res) => {
         });
       }
 
+      if (isOutOfStock(variant)) {
+        return res.status(409).json({
+          message: `المتغيّر غير متوفر حاليًا لعنصر: ${toDisplayName(
+            it?.name
+          )}`,
+        });
+      }
+
       const price = computeFinalAmount(variant.price || { amount: 0 });
 
       let productDoc = productCache.get(String(pid));
@@ -546,6 +564,14 @@ router.post("/prepare-card", verifyTokenOptional, async (req, res) => {
           });
       }
 
+      if (isOutOfStock(variant)) {
+        return res.status(409).json({
+          message: `المتغيّر غير متوفر حاليًا لعنصر: ${toDisplayName(
+            it?.name
+          )}`,
+        });
+      }
+
       const price = computeFinalAmount(variant.price || { amount: 0 });
 
       let productDoc = productCache.get(String(pid));
@@ -619,7 +645,11 @@ router.post("/prepare-card", verifyTokenOptional, async (req, res) => {
       notes: isNonEmpty(notes) ? String(notes).trim() : "",
     });
 
-    return res.status(201).json({ _id: doc._id, total: doc.total });
+    const paymentToken = issuePaymentToken(doc._id);
+
+    return res
+      .status(201)
+      .json({ _id: doc._id, total: doc.total, paymentToken });
   } catch (err) {
     console.error("POST /api/orders/prepare-card error:", err);
     return res.status(500).json({ message: "فشل تحضير طلب البطاقة" });
@@ -773,15 +803,6 @@ router.patch(
         const existing = await Order.findOne({ _id: order._id }).lean();
         return res.json({ message: "الطلب مدفوع مسبقًا", order: existing });
       }
-
-      await Promise.all(
-        (updated.items || []).map((ci) =>
-          Variant.updateOne(
-            { _id: ci.variantId, "stock.inStock": { $gte: ci.quantity } },
-            { $inc: { "stock.inStock": -ci.quantity } }
-          )
-        )
-      );
 
       queueOrderSummarySMS({
         order: updated,

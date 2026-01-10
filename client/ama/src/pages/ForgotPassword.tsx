@@ -117,6 +117,13 @@ const ForgotPassword: React.FC = () => {
       return;
     }
 
+    if (!normalizedPhone) {
+      setResetError(
+        "رقم الجوال مفقود. عد للخطوة الأولى وأعد إرسال رمز الاستعادة."
+      );
+      return;
+    }
+
     try {
       setResetLoading(true);
 
@@ -124,6 +131,7 @@ const ForgotPassword: React.FC = () => {
       const body: any = {
         token: code.trim(),
         password,
+        phone: normalizedPhone,
       };
 
       const res = await axios.post(`${API_BASE}/auth/password/reset`, body, {

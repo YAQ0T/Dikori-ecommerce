@@ -121,6 +121,8 @@ const {
   verifyLahzaTransaction,
 } = require("./utils/lahza");
 const { queueOrderSummarySMS } = require("./utils/orderSms");
+const DECREMENT_STOCK_ON_PAYMENT =
+  String(process.env.DECREMENT_STOCK_ON_PAYMENT || "0") === "1";
 
 function getClientIp(req) {
   const xff = req.headers["x-forwarded-for"];
@@ -138,6 +140,7 @@ function getClientIp(req) {
 }
 
 async function decrementStockByOrderItems(items = []) {
+  if (!DECREMENT_STOCK_ON_PAYMENT) return;
   await Promise.all(
     (items || []).map((ci) =>
       Variant.updateOne(
@@ -358,6 +361,15 @@ app.use("/api/orders", require("./routes/order-status"));
 
 /* ---------- health ---------- */
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
+
+/* ---------- Error handler ---------- */
+app.use((err, _req, res, next) => {
+  console.error("Unhandled error:", err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  return res.status(500).json({ message: "خطأ غير متوقع في الخادم" });
+});
 
 /* ---------- boot ---------- */
 let server = null;

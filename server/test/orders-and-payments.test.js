@@ -17,6 +17,7 @@ const Product = require("../models/Product");
 const Variant = require("../models/Variant");
 const DiscountRule = require("../models/DiscountRule");
 const axios = require("axios");
+const { issuePaymentToken } = require("../utils/paymentTokens");
 const {
   lahzaWebhookHandler,
   getClientIp,
@@ -277,7 +278,7 @@ test(
       _id: variantId,
       product: productId,
       price: { amount: 50, discount: null },
-      stock: { sku: "SKU-PAID" },
+      stock: { sku: "SKU-PAID", inStock: 10 },
       color: { images: [] },
     };
 
@@ -333,7 +334,7 @@ test(
       _id: variantId,
       product: productId,
       price: { amount: 100, discount: null },
-      stock: { sku: "SKU123" },
+      stock: { sku: "SKU123", inStock: 10 },
       color: { images: [] },
     };
     variantResolver = (query) => {
@@ -426,7 +427,7 @@ test(
       _id: variantId,
       product: productId,
       price: { amount: 150, discount: null },
-      stock: { sku: "SKU987" },
+      stock: { sku: "SKU987", inStock: 10 },
       color: { images: [] },
     };
     variantResolver = (query) => {
@@ -501,7 +502,7 @@ test(
       _id: variantId,
       product: productId,
       price: { amount: 120, discount: null },
-      stock: { sku: "SKU555" },
+      stock: { sku: "SKU555", inStock: 10 },
       color: { images: [] },
     };
     variantResolver = (query) => {
@@ -555,7 +556,7 @@ test(
             quantity: 2,
           },
         ],
-        paymentMethod: "cod",
+        guestInfo: { name: "Guest" },
         discount: {
           applied: true,
           ruleId,
@@ -566,14 +567,16 @@ test(
       },
     };
 
-    const codRes = createMockRes();
-    await codHandler(orderReq, codRes);
-    const orderId = codRes.body._id;
+    const prepareRes = createMockRes();
+    await prepareCardHandler(orderReq, prepareRes);
+    const orderId = prepareRes.body._id;
+    const paymentToken = prepareRes.body.paymentToken;
     const expectedTotal = 192;
 
     const req = {
       body: {
         orderId,
+        paymentToken,
         callback_url: "https://example.com/return",
         name: "Test User",
         email: "user@example.com",
@@ -886,7 +889,12 @@ test(
       };
     };
 
-    const req = { params: { reference } };
+    const paymentToken = issuePaymentToken(orderId);
+    const req = {
+      params: { reference },
+      headers: { "x-payment-token": paymentToken },
+      body: { paymentToken },
+    };
     const res = createMockRes();
 
     try {

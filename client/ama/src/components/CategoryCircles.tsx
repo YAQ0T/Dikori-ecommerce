@@ -68,6 +68,7 @@ const CATEGORY_IMAGES: Record<string, string> = {
   "لوازم نجارين": "https://i.imgur.com/aPYhaQW.png",
   "لوازم منجدين": "https://i.imgur.com/S9rjrsh.png",
   "مقابض ابواب": "https://i.imgur.com/UskLo6H.png",
+  "لوازم المنيوم": "https://i.imgur.com/ntKbBKD.png",
   "مقابض خزائن": "https://i.imgur.com/AEyMjHc.png",
   "اكسسوارات مطابخ": "https://i.imgur.com/hlpu1oK.png",
   "اكسسوارات غرف نوم": "https://i.imgur.com/ZMr397G.png",

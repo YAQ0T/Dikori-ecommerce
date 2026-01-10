@@ -16,6 +16,7 @@ export type ResetDto = {
   password: string;
   confirmPassword?: string;
   email?: string;
+  phone?: string;
 };
 
 export async function login(dto: LoginDto) {
@@ -49,6 +50,7 @@ export async function resetPassword(dto: ResetDto) {
   if (dto.confirmPassword != null)
     payload.confirmPassword = dto.confirmPassword;
   if (dto.email) payload.email = dto.email; // بعض السيرفرات تطلب الإيميل كذلك
+  if (dto.phone) payload.phone = dto.phone; // دعم مسار إعادة التعيين عبر رقم الجوال
 
   const { data } = await api.post("/auth/password/reset", payload);
   return data; // { message: "..." }
