@@ -778,7 +778,7 @@ const Products: React.FC = () => {
         />
 
         {/* فلاتر */}
-        <section className="mt-4">
+        <section className="mt-4 mb-6">
           <div className="surface-card p-4">
           <div className="grid grid-cols-1 lg:grid-cols-[1.6fr,0.6fr] gap-3 mb-4 items-center">
             <div className="relative w-full" ref={searchBoxWrapperRef}>
