@@ -7,7 +7,7 @@ import {
   type ChangeEvent,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { api } from "@/lib/api";
 import clsx from "clsx";
 import { useCart } from "@/context/CartContext";
 import { useFavorites, type FavoriteProduct } from "@/context/FavoritesContext";
@@ -220,10 +220,9 @@ const ProductCard: React.FC<Props> = ({ product }) => {
     (async () => {
       try {
         setVLoading(true);
-        const { data } = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/variants`,
-          { params: { product: product._id, limit: 500 } }
-        );
+        const { data } = await api.get("/variants", {
+          params: { product: product._id, limit: 500 },
+        });
         if (ignore) return;
 
         const vs: Variant[] = normalizeVariantsResponse(data);
@@ -514,7 +513,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
   // سكيليتون
   if (vLoading) {
     return (
-      <div className="group border rounded-lg p-2 text-right relative h-full animate-pulse">
+      <div className="group surface-card p-2 text-right relative h-full animate-pulse">
         <div className="w-full aspect-[4/5] mb-2 rounded bg-gray-200" />
         <div className="h-5 w-2/3 bg-gray-200 rounded mb-2" />
         <div className="h-4 w-1/3 bg-gray-200 rounded mb-2" />
@@ -668,7 +667,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
       {/* ============ موبايل ============ */}
       <div
         className={clsx(
-          "relative border rounded-lg p-2 text-right hover:shadow flex flex-col h-full md:hidden cursor-pointer transition-all duration-300",
+          "relative surface-card p-2 text-right flex flex-col h-full md:hidden cursor-pointer transition-all duration-300",
           isDetailsOpen && "ring-2 ring-black/10"
         )}
         onClick={() => {
@@ -685,7 +684,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
               : "scale-100"
           )}
         >
-          <div className="relative w-full aspect-[4/5] mb-1.5 overflow-hidden rounded bg-white">
+          <div className="relative w-full aspect-[4/5] mb-1.5 overflow-hidden rounded bg-white/80 dark:bg-gray-900/60">
             {displayedImages.map((src, index) => (
               <img
                 key={`${src}-${index}`}
@@ -701,7 +700,9 @@ const ProductCard: React.FC<Props> = ({ product }) => {
                 )}
                 loading="lazy"
                 decoding="async"
-                sizes="100vw"
+                sizes="(max-width: 768px) 50vw, 33vw"
+                width={640}
+                height={800}
                 draggable={false}
               />
             ))}
@@ -838,7 +839,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
       {/* ============ ديسكتوب ============ */}
       <div
         className={clsx(
-          "hidden md:flex group border rounded-lg p-3 text-right hover:shadow relative flex-col justify-between h-full transition-all duration-300",
+          "hidden md:flex group surface-card p-3 text-right relative flex-col justify-between h-full transition-all duration-300",
           isDetailsOpen && "ring-2 ring-black/10"
         )}
       >
@@ -851,7 +852,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
           )}
         >
           <div
-            className="relative w-full aspect-[4/5] mb-2 overflow-hidden rounded bg-white cursor-pointer"
+            className="relative w-full aspect-[4/5] mb-2 overflow-hidden rounded bg-white/80 dark:bg-gray-900/60 cursor-pointer"
             onClick={() => navigate(`/products/${product._id}`)}
             role="button"
             tabIndex={0}
@@ -877,7 +878,9 @@ const ProductCard: React.FC<Props> = ({ product }) => {
                 )}
                 loading="lazy"
                 decoding="async"
-                sizes="33vw"
+                sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                width={640}
+                height={800}
                 draggable={false}
               />
             ))}

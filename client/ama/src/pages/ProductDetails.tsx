@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { api } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -174,8 +175,26 @@ const ProductDetails: React.FC = () => {
   const { locale } = useLanguage();
   const { t } = useTranslation();
 
-  const [product, setProduct] = useState<any>(null);
-  const [variants, setVariants] = useState<Variant[]>([]);
+  const productQuery = useQuery({
+    queryKey: ["product", id],
+    queryFn: async () => (await api.get(`/products/${id}`)).data,
+    enabled: Boolean(id),
+    staleTime: 60_000,
+  });
+  const variantsQuery = useQuery({
+    queryKey: ["variants", id],
+    queryFn: async () => {
+      const { data } = await api.get("/variants", {
+        params: { product: id, limit: 500 },
+      });
+      return normalizeVariantsResponse(data);
+    },
+    enabled: Boolean(id),
+    staleTime: 60_000,
+  });
+
+  const product = productQuery.data ?? null;
+  const variants = variantsQuery.data ?? [];
 
   const { isFavorite, toggleFavorite } = useFavorites();
   const favoritePayload = useMemo<FavoriteProduct | null>(
@@ -237,42 +256,15 @@ const ProductDetails: React.FC = () => {
       .join(" ");
   }, [timeLeft, t]);
 
-  /* جلب المنتج والمتغيرات */
   useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        const prodRes = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/products/${id}`
-        );
-        if (ignore) return;
-        setProduct(prodRes.data);
-
-        const varsRes = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/variants`,
-          { params: { product: id, limit: 500 } }
-        );
-
-        const vs: Variant[] = normalizeVariantsResponse(varsRes.data);
-        setVariants(vs);
-
-        if (vs.length > 0) {
-          setMeasure(vs[0].measureSlug || "");
-          setColor(vs[0].colorSlug || "");
-        } else {
-          setMeasure("");
-          setColor("");
-        }
-      } catch (err) {
-        console.error("❌ Failed to fetch product details", err);
-        setProduct(null);
-        setVariants([]);
-      }
-    })();
-    return () => {
-      ignore = true;
-    };
-  }, [id]);
+    if (variants.length > 0) {
+      setMeasure(variants[0].measureSlug || "");
+      setColor(variants[0].colorSlug || "");
+    } else {
+      setMeasure("");
+      setColor("");
+    }
+  }, [variants]);
 
   /* خرائط عرضية للأسماء + الوحدة */
   const measureInfoBySlug = useMemo(() => {
@@ -433,8 +425,16 @@ const ProductDetails: React.FC = () => {
   const isCtaDisabled = !currentVariant || !isQuantityValid;
 
   /* التحميل */
-  if (!product) {
+  if (productQuery.isLoading) {
     return <p className="text-center mt-10">{t("productDetails.loading")}</p>;
+  }
+
+  if (productQuery.isError || !product) {
+    return (
+      <p className="text-center mt-10 text-muted-foreground">
+        {t("productDetails.error")}
+      </p>
+    );
   }
 
   /* إخفاء UI المقاس/اللون لو ما في إلا "موحّد" */
@@ -447,49 +447,56 @@ const ProductDetails: React.FC = () => {
       <main className="container mx-auto p-6 text-right">
         <div className="grid md:grid-cols-2 gap-8">
           {/* ✅ سلايدر الصور */}
-          <div className="relative w-full h-[400px] overflow-hidden rounded group">
-            {images.map((src: string, index: number) => (
-              <img
-                key={index}
-                src={src}
-                alt={productName}
-                className={clsx(
-                  "absolute top-0 left-0 w-full h-full object-contain transition-all duration-500 pointer-events-none",
-                  {
-                    "opacity-100 translate-x-0 z-10": index === currentImage,
-                    "opacity-0 translate-x-full z-0": index > currentImage,
-                    "opacity-0 -translate-x-full z-0": index < currentImage,
-                  }
-                )}
-              />
-            ))}
+          <div className="surface-card p-3">
+            <div className="relative w-full aspect-[4/5] overflow-hidden rounded-xl group bg-white/70 dark:bg-gray-900/60">
+              {images.map((src: string, index: number) => (
+                <img
+                  key={index}
+                  src={src}
+                  alt={productName}
+                  className={clsx(
+                    "absolute top-0 left-0 w-full h-full object-contain transition-all duration-500 pointer-events-none",
+                    {
+                      "opacity-100 translate-x-0 z-10": index === currentImage,
+                      "opacity-0 translate-x-full z-0": index > currentImage,
+                      "opacity-0 -translate-x-full z-0": index < currentImage,
+                    }
+                  )}
+                  loading={index === 0 ? "eager" : "lazy"}
+                  decoding="async"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  width={900}
+                  height={1125}
+                />
+              ))}
 
-            {images.length > 1 && (
-              <>
-                <button
-                  onClick={prevImage}
-                  className="absolute top-1/2 left-2 -translate-y-1/2 bg-white/50 hover:bg-white/80 text-black rounded-full px-3 py-1 shadow-lg border border-gray-300 hover:scale-105 transition opacity-0 group-hover:opacity-100 z-20"
-                >
-                  ◀
-                </button>
-                <button
-                  onClick={nextImage}
-                  className="absolute top-1/2 right-2 -translate-y-1/2 bg-white/50 hover:bg-white/80 text-black rounded-full px-3 py-1 shadow-lg border border-gray-300 hover:scale-105 transition opacity-0 group-hover:opacity-100 z-20"
-                >
-                  ▶
-                </button>
+              {images.length > 1 && (
+                <>
+                  <button
+                    onClick={prevImage}
+                    className="absolute top-1/2 left-2 -translate-y-1/2 bg-white/70 hover:bg-white text-black rounded-full px-3 py-1 shadow-lg border border-gray-300 hover:scale-105 transition opacity-0 group-hover:opacity-100 z-20"
+                  >
+                    ◀
+                  </button>
+                  <button
+                    onClick={nextImage}
+                    className="absolute top-1/2 right-2 -translate-y-1/2 bg-white/70 hover:bg-white text-black rounded-full px-3 py-1 shadow-lg border border-gray-300 hover:scale-105 transition opacity-0 group-hover:opacity-100 z-20"
+                  >
+                    ▶
+                  </button>
 
-                {discountActive && discountPercent !== null && (
-                  <span className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">
-                    -{discountPercent}%
-                  </span>
-                )}
-              </>
-            )}
+                  {discountActive && discountPercent !== null && (
+                    <span className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">
+                      -{discountPercent}%
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* ✅ التفاصيل */}
-          <div>
+          <div className="surface-card p-5 md:p-6">
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className="text-3xl font-bold">{productName}</h1>
               <button

@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
 const axios = require("axios");
+const { validateBody, validateParams, z } = require("../utils/validate");
 
 const {
   verifyToken,
@@ -28,6 +29,45 @@ const ENV_MIN_SCORE = Number(process.env.RECAPTCHA_MIN_SCORE);
 const DEFAULT_RECAPTCHA_MIN_SCORE = Number.isFinite(ENV_MIN_SCORE)
   ? ENV_MIN_SCORE
   : 0.5;
+
+const orderItemSchema = z.object({
+  productId: z.string().min(1),
+  variantId: z.string().optional(),
+  name: z.string().optional(),
+  quantity: z.coerce.number().int().positive(),
+  sku: z.string().optional(),
+  color: z.string().nullable().optional(),
+  measure: z.string().nullable().optional(),
+});
+
+const orderCreateSchema = z
+  .object({
+    address: z.string().trim().min(1),
+    paymentMethod: z.string().optional(),
+    paymentStatus: z.string().optional(),
+    status: z.string().optional(),
+    notes: z.string().optional(),
+    items: z.array(orderItemSchema).min(1),
+    recaptchaToken: z.string().optional(),
+    recaptchaAction: z.string().optional(),
+    recaptchaMinScore: z.coerce.number().optional(),
+    discount: z.record(z.any()).optional(),
+  })
+  .passthrough();
+
+const prepareCardSchema = orderCreateSchema.extend({
+  guestInfo: z
+    .object({
+      name: z.string().optional(),
+      phone: z.string().optional(),
+      email: z.string().optional(),
+      address: z.string().optional(),
+    })
+    .optional(),
+}).passthrough();
+
+const idParamSchema = z.object({ id: z.string().min(1) });
+const referenceParamSchema = z.object({ reference: z.string().min(1) });
 
 const isIOSAppRequest = (req) => {
   if (!req || typeof req.get !== "function") {
@@ -324,7 +364,11 @@ async function computeOrderTotals(items, incomingDiscount) {
 }
 
 /* ======================= إنشاء طلب COD ======================= */
-router.post("/", verifyTokenOptional, async (req, res) => {
+router.post(
+  "/",
+  verifyTokenOptional,
+  validateBody(orderCreateSchema),
+  async (req, res) => {
   try {
     const recaptchaOk = await ensureRecaptcha(req, res);
     if (!recaptchaOk) return;
@@ -489,10 +533,15 @@ router.post("/", verifyTokenOptional, async (req, res) => {
     console.error("POST /api/orders error:", err);
     return res.status(500).json({ message: "فشل إنشاء طلب COD" });
   }
-});
+  }
+);
 
 /* ==================== تحضير طلب للبطاقة ==================== */
-router.post("/prepare-card", verifyTokenOptional, async (req, res) => {
+router.post(
+  "/prepare-card",
+  verifyTokenOptional,
+  validateBody(prepareCardSchema),
+  async (req, res) => {
   try {
     const recaptchaOk = await ensureRecaptcha(req, res);
     if (!recaptchaOk) return;
@@ -654,13 +703,15 @@ router.post("/prepare-card", verifyTokenOptional, async (req, res) => {
     console.error("POST /api/orders/prepare-card error:", err);
     return res.status(500).json({ message: "فشل تحضير طلب البطاقة" });
   }
-});
+  }
+);
 
 /* =========== وسم الطلب مدفوعًا بالمرجع =========== */
 router.patch(
   "/by-reference/:reference/pay",
   verifyToken,
   isAdmin,
+  validateParams(referenceParamSchema),
   async (req, res) => {
     try {
       const reference = String(req.params.reference || "").trim();
@@ -954,7 +1005,12 @@ router.get("/user/:userId/order/:orderId", verifyToken, async (req, res) => {
 });
 
 /* ======================= حذف طلب (أدمن) ======================= */
-router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
+router.delete(
+  "/:id",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -973,7 +1029,8 @@ router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
     console.error("DELETE /api/orders/:id error:", err);
     return res.status(500).json({ message: "فشل حذف الطلب" });
   }
-});
+  }
+);
 
 /* ======================= كل الطلبات (أدمن) ======================= */
 router.get("/", verifyToken, isAdmin, async (_req, res) => {

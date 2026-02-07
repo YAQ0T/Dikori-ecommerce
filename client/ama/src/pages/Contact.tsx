@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import axios from "axios";
+import { api } from "@/lib/api";
 
 const Contact: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -28,10 +28,7 @@ const Contact: React.FC = () => {
     setFeedback(null);
 
     try {
-      const res = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/contact`,
-        formData
-      );
+      const res = await api.post("/contact", formData);
       if (res.status === 200) {
         console.log("✅ تم إرسال الرسالة بنجاح");
         setFeedback("✅ تم إرسال الرسالة بنجاح!");

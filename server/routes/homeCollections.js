@@ -9,9 +9,24 @@ const {
   verifyToken,
   isAdmin /* أو isAdmin فقط */,
 } = require("../middleware/authMiddleware");
+const { validateBody, z } = require("../utils/validate");
+
+const updateCollectionsSchema = z
+  .object({
+    recommended: z.array(z.string()).optional(),
+    newArrivals: z.array(z.string()).optional(),
+    recommendedIds: z.array(z.string()).optional(),
+    newArrivalIds: z.array(z.string()).optional(),
+  })
+  .passthrough();
 
 // ====== Admin/Dealer: حفظ القوائم ======
-router.put("/", verifyToken, isAdmin, async (req, res) => {
+router.put(
+  "/",
+  verifyToken,
+  isAdmin,
+  validateBody(updateCollectionsSchema),
+  async (req, res) => {
   try {
     // نقبل الشكلين من الواجهة
     const { recommended, newArrivals, recommendedIds, newArrivalIds } =
@@ -69,7 +84,8 @@ router.put("/", verifyToken, isAdmin, async (req, res) => {
     console.error("PUT /api/home-collections error:", err);
     return res.status(500).json({ message: "خطأ في الخادم" });
   }
-});
+  }
+);
 
 // ====== Get: كلا القائمتين ======
 router.get("/", async (_req, res) => {

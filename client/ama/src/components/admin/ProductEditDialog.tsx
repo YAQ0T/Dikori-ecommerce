@@ -10,7 +10,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useTranslation } from "@/i18n";
 import { ensureLocalizedObject } from "@/lib/localized";
 import type { SupportedLocale } from "@/context/LanguageContext";
@@ -104,8 +104,8 @@ const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
         payload.description = sanitizedDescription;
       }
 
-      const res = await axios.put(
-        `${import.meta.env.VITE_API_URL}/api/products/${editingProduct._id}`,
+      const res = await api.put(
+        `/products/${editingProduct._id}`,
         payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );

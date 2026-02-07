@@ -3,16 +3,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
-
-/** ✅ قاعدة API موحّدة */
-const RAW_BASE = (
-  import.meta.env.VITE_API_BASE?.toString() ||
-  import.meta.env.VITE_API_URL?.toString() ||
-  "http://localhost:3001"
-).replace(/\/+$/, "");
-const API_BASE = `${RAW_BASE}/api`;
 
 function normalizePhone(p: string) {
   if (!p) return "";
@@ -74,11 +66,7 @@ const ForgotPassword: React.FC = () => {
       const sanitized = normalizedPhone;
       const payload = { phone: sanitized };
 
-      const res = await axios.post(
-        `${API_BASE}/auth/password/request-reset`,
-        payload,
-        { headers: { "Content-Type": "application/json" } }
-      );
+      const res = await api.post("/auth/password/request-reset", payload);
 
       const msg =
         res?.data?.message ||
@@ -134,9 +122,7 @@ const ForgotPassword: React.FC = () => {
         phone: normalizedPhone,
       };
 
-      const res = await axios.post(`${API_BASE}/auth/password/reset`, body, {
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await api.post("/auth/password/reset", body);
 
       const okMsg =
         res?.data?.message ||
@@ -174,11 +160,7 @@ const ForgotPassword: React.FC = () => {
       const sanitized = normalizedPhone;
       const body = { phone: sanitized };
 
-      const res = await axios.post(
-        `${API_BASE}/auth/password/request-reset`,
-        body,
-        { headers: { "Content-Type": "application/json" } }
-      );
+      const res = await api.post("/auth/password/request-reset", body);
 
       const msg =
         res?.data?.message ||

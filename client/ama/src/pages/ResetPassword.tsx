@@ -3,14 +3,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useNavigate, useSearchParams } from "react-router-dom";
-
-// ✅ نضمن إضافة /api حتى لو المتغير لا يحتويها
-const RAW_BASE =
-  import.meta.env.VITE_API_BASE?.toString().replace(/\/+$/, "") ||
-  "http://localhost:3001";
-const API_BASE = `${RAW_BASE}/api`;
 
 const OTP_MAX_LEN = 6; // عدّلها لو طول الـ OTP عندك مختلف
 
@@ -60,7 +54,7 @@ const ResetPassword: React.FC = () => {
 
     try {
       setLoading(true);
-      await axios.post(`${API_BASE}/auth/password/reset`, {
+      await api.post("/auth/password/reset", {
         userId,
         code,
         newPassword: password,

@@ -8,7 +8,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import axios from "axios";
+import { api } from "@/lib/api";
 import React, { useState, useMemo } from "react";
 import { useTranslation } from "@/i18n";
 import { emptyLocalized, ensureLocalizedObject } from "@/lib/localized";
@@ -126,11 +126,9 @@ const ProductForm: React.FC<ProductFormProps> = ({
         payload.description = sanitizedDescription;
       }
 
-      const res = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/products`,
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const res = await api.post("/products", payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (onSuccess) {
         onSuccess();

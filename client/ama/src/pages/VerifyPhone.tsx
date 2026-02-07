@@ -3,17 +3,9 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-
-/** ✅ قاعدة الـ API (متوافقة مع VITE_API_BASE/VITE_API_URL) */
-const RAW_BASE = (
-  import.meta.env.VITE_API_BASE?.toString() ||
-  import.meta.env.VITE_API_URL?.toString() ||
-  "http://localhost:3001"
-).replace(/\/+$/, "");
-const API_BASE = `${RAW_BASE}/api`;
 
 const OTP_MAX_LEN = 6;
 
@@ -62,11 +54,7 @@ const VerifyPhone: React.FC = () => {
 
     try {
       setLoading(true);
-      const res = await axios.post(
-        `${API_BASE}/auth/verify-sms`,
-        { userId, code },
-        { headers: { "Content-Type": "application/json" } }
-      );
+      const res = await api.post("/auth/verify-sms", { userId, code });
 
       // ✅ تسجيل دخول تلقائي: السيرفر يعيد { token, user, message }
       const { token, user, message } = res.data || {};
@@ -100,11 +88,7 @@ const VerifyPhone: React.FC = () => {
 
     try {
       setLoading(true);
-      const res = await axios.post(
-        `${API_BASE}/auth/send-sms-code`,
-        { userId },
-        { headers: { "Content-Type": "application/json" } }
-      );
+      const res = await api.post("/auth/send-sms-code", { userId });
       const msg =
         res?.data?.message ||
         "إن كان الحساب موجودًا وسيحتاج تحقق، سيتم إرسال رمز جديد.";

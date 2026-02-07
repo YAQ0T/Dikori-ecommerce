@@ -1,28 +1,30 @@
+import { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
-import Home from "@/pages/Home";
-import Products from "./pages/Products";
-import About from "./pages/About";
-import Contact from "./pages/Contact";
-import Cart from "./pages/Cart";
-import Account from "./pages/Account";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import ProductDetails from "@/pages/ProductDetails";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import Terms from "./pages/Terms";
-import Favorites from "./pages/Favorites";
-import AdminDashboard from "./pages/AdminDashboard";
-import UserOrderDetails from "./pages/UserOrderDetails";
+import PageLoader from "@/components/common/PageLoader";
 // import OfferDialog from "./components/common/OfferDialog";
 // import { useEffect, useState } from "react";
-import CheckoutSuccess from "./pages/CheckoutSuccess";
-import ReturnsPolicy from "./pages/ReturnsPolicy";
-import AdminHomeCollections from "./pages/AdminHomeCollections";
-import VerifyPhone from "./pages/VerifyPhone";
 
-// ✅ صفحات جديدة لإدارة كلمة المرور
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
+const Home = lazy(() => import("@/pages/Home"));
+const Products = lazy(() => import("./pages/Products"));
+const About = lazy(() => import("./pages/About"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Cart = lazy(() => import("./pages/Cart"));
+const Account = lazy(() => import("./pages/Account"));
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const ProductDetails = lazy(() => import("@/pages/ProductDetails"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Favorites = lazy(() => import("./pages/Favorites"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard"));
+const UserOrderDetails = lazy(() => import("./pages/UserOrderDetails"));
+const CheckoutSuccess = lazy(() => import("./pages/CheckoutSuccess"));
+const ReturnsPolicy = lazy(() => import("./pages/ReturnsPolicy"));
+const AdminHomeCollections = lazy(() => import("./pages/AdminHomeCollections"));
+const VerifyPhone = lazy(() => import("./pages/VerifyPhone"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 function App() {
   // const [open, setOpen] = useState(false);
@@ -34,39 +36,42 @@ function App() {
   return (
     <>
       {/* <OfferDialog open={open} onClose={() => setOpen(false)} /> */}
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/favorites" element={<Favorites />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/cart" element={<Cart />} />
-        <Route path="/account" element={<Account />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/products" element={<Products />} />
+          <Route path="/favorites" element={<Favorites />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/cart" element={<Cart />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
-        {/* ✅ صفحة توثيق الجوال (المسار القديم) */}
-        <Route path="/verify" element={<VerifyPhone />} />
-        {/* ✅ إضافة المسار الجديد المستخدم في بعض التحويلات */}
-        <Route path="/verify-phone" element={<VerifyPhone />} />
+          {/* ✅ صفحة توثيق الجوال (المسار القديم) */}
+          <Route path="/verify" element={<VerifyPhone />} />
+          {/* ✅ إضافة المسار الجديد المستخدم في بعض التحويلات */}
+          <Route path="/verify-phone" element={<VerifyPhone />} />
 
-        <Route path="/products/:id" element={<ProductDetails />} />
+          <Route path="/products/:id" element={<ProductDetails />} />
 
-        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-        <Route path="/returnes" element={<ReturnsPolicy />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/my-orders/:orderId" element={<UserOrderDetails />} />
-        <Route path="/checkout/success" element={<CheckoutSuccess />} />
-        <Route
-          path="/admin/home-collections"
-          element={<AdminHomeCollections />}
-        />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/returnes" element={<ReturnsPolicy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/my-orders/:orderId" element={<UserOrderDetails />} />
+          <Route path="/checkout/success" element={<CheckoutSuccess />} />
+          <Route
+            path="/admin/home-collections"
+            element={<AdminHomeCollections />}
+          />
 
-        {/* ✅ إدارة كلمة المرور */}
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-      </Routes>
+          {/* ✅ إدارة كلمة المرور */}
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
     </>
   );
 }

@@ -4,9 +4,10 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Input } from "@/components/ui/input";
 import ProductCard from "@/components/ProductCard";
+import ProductCardSkeleton from "@/components/common/ProductCardSkeleton";
 import CategoryCircles from "@/components/CategoryCircles";
 import { useLocation, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import {
   getLocalizedText,
@@ -16,6 +17,7 @@ import {
 import { getColorLabel } from "@/lib/colors";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTranslation } from "@/i18n";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   Pagination,
@@ -51,6 +53,28 @@ type FacetItem = { name: string; slug: string };
 type Facets = { measures: FacetItem[]; colors: FacetItem[] };
 type OwnershipFilter = "all" | "ours" | "local";
 type CategoryGroup = { mainCategory: string; subCategories: string[] };
+
+type SettingsCategory = {
+  value: string;
+  label?: LocalizedText;
+  imageUrl?: string;
+  order?: number;
+};
+
+type SettingsSubCategory = {
+  main: string;
+  value: string;
+  label?: LocalizedText;
+  imageUrl?: string;
+  order?: number;
+};
+
+type SiteSettings = {
+  categoryMenu?: {
+    main?: SettingsCategory[];
+    sub?: SettingsSubCategory[];
+  };
+};
 
 const PAGE_WINDOW = 5;
 
@@ -107,6 +131,19 @@ const Products: React.FC = () => {
 
   const location = useLocation();
 
+  const settingsQuery = useQuery({
+    queryKey: ["site-settings"],
+    queryFn: async () => {
+      const { data } = await api.get("/site-settings");
+      return data as SiteSettings;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const settings = settingsQuery.data;
+  const categoryMenuMain = settings?.categoryMenu?.main || [];
+  const categoryMenuSub = settings?.categoryMenu?.sub || [];
+
   const [selectedMainCategory, setSelectedMainCategory] = useState<string>(
     () => {
       return new URLSearchParams(location.search).get("category") ?? "";
@@ -128,10 +165,6 @@ const Products: React.FC = () => {
   const [ownershipFilter, setOwnershipFilter] =
     useState<OwnershipFilter>("all");
 
-  const [products, setProducts] = useState<ProductItem[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
-
   const [facets, setFacets] = useState<Facets>({ measures: [], colors: [] });
   const [loadingFacets, setLoadingFacets] = useState(false);
   const [facetsError, setFacetsError] = useState<string | null>(null);
@@ -140,7 +173,6 @@ const Products: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
 
   const [recentDays, setRecentDays] = useState<number | null>(null);
-  const [recentTotal, setRecentTotal] = useState<number | null>(null);
 
   const [categoryMenu, setCategoryMenu] = useState<CategoryGroup[]>([]);
   const [loadingCategories, setLoadingCategories] = useState<boolean>(false);
@@ -165,6 +197,60 @@ const Products: React.FC = () => {
     },
     [t]
   );
+
+  const categoryLabelMapper = useCallback(
+    (value: string, type: "main" | "sub") => {
+      if (!value) return value;
+      if (type === "main") {
+        const found = categoryMenuMain.find((item) => item.value === value);
+        if (found?.label) {
+          const localized = getLocalizedText(found.label, locale);
+          if (localized) return localized;
+        }
+      } else {
+        const found = categoryMenuSub.find(
+          (item) =>
+            item.value === value &&
+            (!selectedMainCategory || item.main === selectedMainCategory)
+        );
+        if (found?.label) {
+          const localized = getLocalizedText(found.label, locale);
+          if (localized) return localized;
+        }
+      }
+      return translateCategoryLabel(value, type);
+    },
+    [
+      categoryMenuMain,
+      categoryMenuSub,
+      locale,
+      selectedMainCategory,
+      translateCategoryLabel,
+    ]
+  );
+
+  const mainCategoryImages = useMemo(() => {
+    const map: Record<string, string> = {};
+    categoryMenuMain.forEach((item) => {
+      if (item.value && item.imageUrl) {
+        map[item.value] = item.imageUrl;
+      }
+    });
+    return map;
+  }, [categoryMenuMain]);
+
+  const subCategoryImages = useMemo(() => {
+    const map: Record<string, string> = { ...subCategoryImagesFromData };
+    categoryMenuSub.forEach((item) => {
+      if (!item.value || !item.imageUrl) return;
+      if (item.main) {
+        map[`${item.main}:::${item.value}`] = item.imageUrl;
+      } else {
+        map[item.value] = item.imageUrl;
+      }
+    });
+    return map;
+  }, [categoryMenuSub, subCategoryImagesFromData]);
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const searchBoxWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -243,13 +329,12 @@ const Products: React.FC = () => {
         // (اختياري) لو بدك يقيدها بأيام التحديث:
         // if (recentDays && recentDays > 0) params.set("days", String(recentDays));
 
-        const base = `${import.meta.env.VITE_API_URL}/api/products/facets`;
-        const url = withQuery(base, params);
+        const url = withQuery("/products/facets", params);
         const headers = token
           ? { Authorization: `Bearer ${token}` }
           : undefined;
 
-        const { data } = await axios.get(url, { headers });
+        const { data } = await api.get(url, { headers });
         if (ignore) return;
 
         const f: Facets = {
@@ -298,11 +383,22 @@ const Products: React.FC = () => {
     t,
   ]);
 
-  // المنتجات
-  useEffect(() => {
-    let ignore = false;
-    (async () => {
-      setLoading(true);
+  const productsQuery = useQuery({
+    queryKey: [
+      "products",
+      currentPage,
+      selectedMainCategory,
+      selectedSubCategory,
+      searchTerm,
+      maxPrice,
+      selectedColorSlug,
+      selectedMeasureSlug,
+      ownershipFilter,
+      canUseOwnership,
+      token,
+      recentDays,
+    ],
+    queryFn: async () => {
       const params = new URLSearchParams();
       params.set("page", String(currentPage));
       params.set("limit", "9");
@@ -323,89 +419,68 @@ const Products: React.FC = () => {
         params.set("days", String(recentDays));
       }
 
-      try {
-        const base = `${import.meta.env.VITE_API_URL}/api/products`;
-        const endpoint =
-          recentDays && recentDays > 0
-            ? `${base}/recent-updates`
-            : `${base}/with-stats`;
-        const url = withQuery(endpoint, params);
+      const endpoint =
+        recentDays && recentDays > 0
+          ? "/products/recent-updates"
+          : "/products/with-stats";
+      const url = withQuery(endpoint, params);
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const res = await api.get(url, { headers });
+      const {
+        items,
+        totalPages: tp,
+        total,
+      } = res.data || {
+        items: [],
+        totalPages: 1,
+        total: 0,
+      };
 
-        const headers = token
-          ? { Authorization: `Bearer ${token}` }
-          : undefined;
-        const res = await axios.get(url, { headers });
-        if (ignore) return;
+      const mapped: ProductItem[] = (items || []).map((p: any) => ({
+        _id: p._id,
+        name: ensureLocalizedObject(p.name),
+        description: ensureLocalizedObject(p.description),
+        images: Array.isArray(p.images) ? p.images : [],
+        mainCategory: p.mainCategory,
+        subCategory: p.subCategory,
+        minPrice: p.minPrice,
+        totalStock: p.totalStock,
+        price: typeof p.minPrice === "number" ? p.minPrice : 0,
+        quantity: typeof p.totalStock === "number" ? p.totalStock : 0,
+      }));
 
-        const {
-          items,
-          totalPages: tp,
-          total,
-        } = res.data || {
-          items: [],
-          totalPages: 1,
-          total: 0,
-        };
+      return {
+        items: mapped,
+        totalPages: tp || 1,
+        total: typeof total === "number" ? total : mapped.length,
+      };
+    },
+    placeholderData: (prev) => prev,
+    staleTime: 60_000,
+  });
 
-        const mapped: ProductItem[] = (items || []).map((p: any) => ({
-          _id: p._id,
-          name: ensureLocalizedObject(p.name),
-          description: ensureLocalizedObject(p.description),
-          images: Array.isArray(p.images) ? p.images : [],
-          mainCategory: p.mainCategory,
-          subCategory: p.subCategory,
-          minPrice: p.minPrice,
-          totalStock: p.totalStock,
-          price: typeof p.minPrice === "number" ? p.minPrice : 0,
-          quantity: typeof p.totalStock === "number" ? p.totalStock : 0,
-        }));
+  const products = productsQuery.data?.items ?? [];
+  const totalPages = productsQuery.data?.totalPages ?? 1;
+  const recentTotal =
+    recentDays && productsQuery.data ? productsQuery.data.total : null;
+  const error = productsQuery.isError ? t("productsPage.error") : null;
 
-        setProducts(mapped);
-        setTotalPages(tp || 1);
-
-        // 👇 دمج صور الفروع من المنتجات المعروضة حالياً (لو في فرع بدون صورة محفوظة)
-        setSubCategoryImagesFromData((prev) => {
-          const next = { ...prev };
-          for (const p of mapped) {
-            if (!p?.mainCategory || !p?.subCategory) continue;
-            const key = `${p.mainCategory}:::${p.subCategory}`;
-            if (!next[key]) {
-              const img =
-                Array.isArray(p.images) && p.images[0] ? p.images[0] : "";
-              if (img) next[key] = img;
-            }
-          }
-          return next;
-        });
-
-        if (recentDays && recentDays > 0) {
-          setRecentTotal(typeof total === "number" ? total : mapped.length);
-        } else {
-          setRecentTotal(null);
+  useEffect(() => {
+    if (!products.length) return;
+    setSubCategoryImagesFromData((prev) => {
+      const next = { ...prev };
+      for (const p of products) {
+        if (!p?.mainCategory || !p?.subCategory) continue;
+        const key = `${p.mainCategory}:::${p.subCategory}`;
+        if (!next[key]) {
+          const img =
+            Array.isArray(p.images) && p.images[0] ? p.images[0] : "";
+          if (img) next[key] = img;
         }
-      } catch {
-        setTotalPages(1);
-        if (recentDays && recentDays > 0) setRecentTotal(null);
-      } finally {
-        setLoading(false);
       }
-    })();
-    return () => {
-      ignore = true;
-    };
-  }, [
-    currentPage,
-    selectedMainCategory,
-    selectedSubCategory,
-    searchTerm,
-    maxPrice,
-    selectedColorSlug,
-    selectedMeasureSlug,
-    ownershipFilter,
-    canUseOwnership,
-    token,
-    recentDays,
-  ]);
+      return next;
+    });
+  }, [products]);
 
   // جلب شجرة التصنيفات + بناء صور فرعية تمثيلية من أول منتج يظهر لكل فرع
   useEffect(() => {
@@ -416,15 +491,13 @@ const Products: React.FC = () => {
         const headers = token
           ? { Authorization: `Bearer ${token}` }
           : undefined;
-        const base = `${import.meta.env.VITE_API_URL}/api/products`;
-
         const PER_PAGE = 100;
         const firstParams = new URLSearchParams();
         firstParams.set("page", "1");
         firstParams.set("limit", String(PER_PAGE));
 
-        const firstUrl = `${base}/with-stats?${firstParams.toString()}`;
-        const firstRes = await axios.get(firstUrl, { headers });
+        const firstUrl = `/products/with-stats?${firstParams.toString()}`;
+        const firstRes = await api.get(firstUrl, { headers });
         if (ignore) return;
 
         const firstData = firstRes.data || { items: [], totalPages: 1 };
@@ -466,9 +539,9 @@ const Products: React.FC = () => {
           const params = new URLSearchParams();
           params.set("page", String(page));
           params.set("limit", String(PER_PAGE));
-          const url = `${base}/with-stats?${params.toString()}`;
+          const url = `/products/with-stats?${params.toString()}`;
           requests.push(
-            axios
+            api
               .get(url, { headers })
               .then((res) => res.data)
               .catch(() => null)
@@ -537,10 +610,9 @@ const Products: React.FC = () => {
         params.set("limit", "10");
         params.set("q", rawSearch.trim());
 
-        const base = `${import.meta.env.VITE_API_URL}/api/products/with-stats`;
-        const url = withQuery(base, params);
+        const url = withQuery("/products/with-stats", params);
 
-        const res = await axios.get(url, { headers });
+        const res = await api.get(url, { headers });
         if (!active) return;
 
         const names = Array.from(
@@ -671,22 +743,7 @@ const Products: React.FC = () => {
     }
   };
 
-  if (loading && products.length === 0) {
-    return (
-      <>
-        <Navbar />
-        <main className="container mx-auto p-6">
-          <h1 className="text-3xl font-bold mb-6 text-right">
-            {t("productsPage.title")}
-          </h1>
-          <p className="text-center text-gray-600 text-lg">
-            {t("productsPage.loading")}
-          </p>
-        </main>
-        <Footer />
-      </>
-    );
-  }
+  const isInitialLoading = productsQuery.isLoading && products.length === 0;
 
   const pageItems = buildPageWindow(currentPage, totalPages, PAGE_WINDOW);
 
@@ -733,8 +790,6 @@ const Products: React.FC = () => {
                   const v = parseInt(e.target.value || "7", 10);
                   setRecentDays(Number.isFinite(v) && v > 0 ? v : 7);
                   setCurrentPage(1);
-
-                  console.log("hi")
                 }}
                 title={t("productsPage.recentUpdates.daysTitle")}
               >
@@ -759,12 +814,14 @@ const Products: React.FC = () => {
           selectedMain={selectedMainCategory}
           selectedSub={selectedSubCategory}
           loading={loadingCategories}
-          subCategoryImages={subCategoryImagesFromData}
-          labelMapper={translateCategoryLabel}
+          subCategoryImages={subCategoryImages}
+          mainCategoryImages={mainCategoryImages}
+          labelMapper={categoryLabelMapper}
         />
 
         {/* فلاتر */}
         <section className="mt-4">
+          <div className="surface-card p-4">
           <div className="flex flex-col sm:flex-row gap-2 mb-4">
             <div
               className="relative flex w-full sm:max-w-xl"
@@ -960,16 +1017,31 @@ const Products: React.FC = () => {
               </button>
             )}
           </div>
+          </div>
         </section>
 
-        {products.length === 0 ? (
-          <p className="text-center text-gray-600 text-lg">
-            {t("productsPage.emptyState")}
-          </p>
+        {error && (
+          <div className="surface-card p-4 text-right mb-4">
+            <p className="text-sm text-muted-foreground">{error}</p>
+          </div>
+        )}
+
+        {isInitialLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6 items-start">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <ProductCardSkeleton key={`products-skeleton-${idx}`} />
+            ))}
+          </div>
+        ) : products.length === 0 ? (
+          <div className="surface-card p-6 text-right">
+            <p className="text-sm text-muted-foreground">
+              {t("productsPage.emptyState")}
+            </p>
+          </div>
         ) : (
           <>
             {/* ✅ عمودين على الموبايل، 3 أعمدة من md وفوق */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 md:gap-6 items-start">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6 items-start">
               {products.map((product) => (
                 <ProductCard key={product._id} product={product} />
               ))}

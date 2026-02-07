@@ -6,8 +6,15 @@ const {
   isAdmin,
   verifyTokenOptional,
 } = require("../middleware/authMiddleware");
+const { validateBody, validateParams, z } = require("../utils/validate");
 
 const ProductsController = require("../controllers/products.controller");
+
+const idParamSchema = z.object({ id: z.string().min(1) });
+const productSchema = z.object({}).passthrough();
+const prioritySchema = z.object({
+  priority: z.enum(["A", "B", "C"]).optional(),
+});
 
 // طبّق التحقق الاختياري على كل الراوتس (يعرف الدور إن وُجد)
 router.use(verifyTokenOptional);
@@ -15,7 +22,13 @@ router.use(verifyTokenOptional);
 /* =========================
  * CREATE (يدعم priority)
  * ========================= */
-router.post("/", verifyToken, isAdmin, ProductsController.create);
+router.post(
+  "/",
+  verifyToken,
+  isAdmin,
+  validateBody(productSchema),
+  ProductsController.create
+);
 
 /* =========================
  * READ with-stats (يحترم priority + فلاتر + Pagination + Sorting)
@@ -41,7 +54,14 @@ router.get("/:id", ProductsController.getOne);
 /* =========================
  * UPDATE (يشمل priority)
  * ========================= */
-router.put("/:id", verifyToken, isAdmin, ProductsController.update);
+router.put(
+  "/:id",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  validateBody(productSchema),
+  ProductsController.update
+);
 
 /* =========================
  * PATCH priority فقط
@@ -50,12 +70,20 @@ router.patch(
   "/:id/priority",
   verifyToken,
   isAdmin,
+  validateParams(idParamSchema),
+  validateBody(prioritySchema),
   ProductsController.patchPriority
 );
 
 /* =========================
  * DELETE (مع حذف الـVariants)
  * ========================= */
-router.delete("/:id", verifyToken, isAdmin, ProductsController.remove);
+router.delete(
+  "/:id",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  ProductsController.remove
+);
 
 module.exports = router;

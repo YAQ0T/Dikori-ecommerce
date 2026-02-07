@@ -4,9 +4,35 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const { verifyToken, isAdmin } = require("../middleware/authMiddleware");
 const DiscountRule = require("../models/DiscountRule");
+const { validateBody, validateParams, z } = require("../utils/validate");
+
+const idParamSchema = z.object({ id: z.string().min(1) });
+
+const ruleBaseSchema = z.object({
+  name: z.string().trim().optional(),
+  threshold: z.coerce.number().nonnegative().optional(),
+  type: z.enum(["percent", "fixed"]).optional(),
+  value: z.coerce.number().nonnegative().optional(),
+  isActive: z.boolean().optional(),
+  startAt: z.string().optional(),
+  endAt: z.string().optional(),
+  priority: z.coerce.number().optional(),
+});
+
+const ruleCreateSchema = ruleBaseSchema.extend({
+  threshold: z.coerce.number().nonnegative(),
+  value: z.coerce.number().nonnegative(),
+});
+
+const ruleUpdateSchema = ruleBaseSchema;
 
 // إنشاء قاعدة
-router.post("/", verifyToken, isAdmin, async (req, res) => {
+router.post(
+  "/",
+  verifyToken,
+  isAdmin,
+  validateBody(ruleCreateSchema),
+  async (req, res) => {
   try {
     const {
       name,
@@ -47,7 +73,8 @@ router.post("/", verifyToken, isAdmin, async (req, res) => {
     console.error("Error creating discount rule:", err);
     res.status(500).json({ message: "فشل إنشاء قاعدة خصم" });
   }
-});
+  }
+);
 
 // قائمة القواعد
 router.get("/", verifyToken, isAdmin, async (_req, res) => {
@@ -63,7 +90,13 @@ router.get("/", verifyToken, isAdmin, async (_req, res) => {
 });
 
 // تحديث قاعدة
-router.patch("/:id", verifyToken, isAdmin, async (req, res) => {
+router.patch(
+  "/:id",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  validateBody(ruleUpdateSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id))
@@ -86,10 +119,16 @@ router.patch("/:id", verifyToken, isAdmin, async (req, res) => {
     console.error("Error updating discount rule:", err);
     res.status(500).json({ message: "فشل تحديث قاعدة الخصم" });
   }
-});
+  }
+);
 
 // حذف قاعدة
-router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
+router.delete(
+  "/:id",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id))
@@ -104,6 +143,7 @@ router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
     console.error("Error deleting discount rule:", err);
     res.status(500).json({ message: "فشل حذف قاعدة الخصم" });
   }
-});
+  }
+);
 
 module.exports = router;

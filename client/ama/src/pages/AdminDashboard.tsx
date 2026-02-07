@@ -16,7 +16,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Loader2, Trash } from "lucide-react";
-import axios from "axios";
+import { api } from "@/lib/api";
 import UserTable from "@/components/admin/UserTable";
 
 // ✅ مكونات الأدمن
@@ -27,6 +27,7 @@ import CategoryFilterMenus from "@/components/admin/CategoryFilterMenus";
 import OrderTable from "@/components/admin/OrderTable";
 import OrderDetailsDialog from "@/components/admin/OrderDetailsDialog";
 import DiscountRulesManager from "@/components/admin/DiscountRulesManager";
+import SiteSettingsEditor from "@/components/admin/SiteSettingsEditor";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import {
   emptyLocalized,
@@ -192,8 +193,8 @@ const AdminDashboard: React.FC = () => {
   // جلب المستخدمين
   useEffect(() => {
     if (!token) return;
-    axios
-      .get(`${import.meta.env.VITE_API_URL}/api/users`, {
+    api
+      .get("/users", {
         headers: apiHeaders,
       })
       .then((res) => setUsers(res.data))
@@ -206,8 +207,8 @@ const AdminDashboard: React.FC = () => {
     let active = true;
     setNotificationsLoading(true);
     setNotificationsLoadError(null);
-    axios
-      .get(`${import.meta.env.VITE_API_URL}/api/notifications`, {
+    api
+      .get("/notifications", {
         headers: apiHeaders,
       })
       .then((res) => {
@@ -244,8 +245,8 @@ const AdminDashboard: React.FC = () => {
       setDeletingNotificationId(notificationId);
 
       try {
-        await axios.delete(
-          `${import.meta.env.VITE_API_URL}/api/notifications/${notificationId}`,
+        await api.delete(
+          `/notifications/${notificationId}`,
           {
             headers: apiHeaders,
           }
@@ -269,10 +270,7 @@ const AdminDashboard: React.FC = () => {
   const fetchOrders = async () => {
     if (!token) return;
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/orders`,
-        { headers: apiHeaders }
-      );
+      const res = await api.get("/orders", { headers: apiHeaders });
       setOrders(res.data);
     } catch (err) {
       console.error("Order Fetch Error:", err);
@@ -288,14 +286,14 @@ const AdminDashboard: React.FC = () => {
   const fetchProductsWithStats = async () => {
     if (!token) return;
     try {
-      const base = `${import.meta.env.VITE_API_URL}/api/products/with-stats`;
+      const base = "/products/with-stats";
       const params: Record<string, string | number> = { page: 1, limit: 2000 };
       if (ownershipFilter !== "all") params.ownership = ownershipFilter;
       const url = `${base}?${new URLSearchParams(
         Object.entries(params).map(([k, v]) => [k, String(v)])
       ).toString()}`;
 
-      const res = await axios.get(url, { headers: apiHeaders });
+      const res = await api.get(url, { headers: apiHeaders });
       const { items } = res.data || { items: [] };
       const mapped: ProductItem[] = (items || []).map((p: any) => ({
         ...p,
@@ -329,8 +327,8 @@ const AdminDashboard: React.FC = () => {
   ) => {
     try {
       if (!orderId) throw new Error("orderId مفقود");
-      await axios.patch(
-        `${import.meta.env.VITE_API_URL}/api/orders/${orderId}/status`,
+      await api.patch(
+        `/orders/${orderId}/status`,
         { status: newStatus },
         { headers: apiHeaders }
       );
@@ -362,6 +360,21 @@ const AdminDashboard: React.FC = () => {
     }, {} as Record<string, Set<string>>);
   }, [productsState]);
 
+  const subCategoryImageDefaults = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const product of productsState) {
+      const main = product.mainCategory;
+      const sub = product.subCategory;
+      const img = Array.isArray(product.images) ? product.images[0] : "";
+      if (!main || !sub || !img) continue;
+      const key = `${main}:::${sub}`;
+      if (!map[key]) {
+        map[key] = img;
+      }
+    }
+    return map;
+  }, [productsState]);
+
   // فلترة محلية حسب الملكية
   const productsForTable = useMemo(() => {
     if (ownershipFilter === "all") return productsState;
@@ -381,10 +394,7 @@ const AdminDashboard: React.FC = () => {
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/api/users/${userId}`,
-        { headers: apiHeaders }
-      );
+      await api.delete(`/users/${userId}`, { headers: apiHeaders });
       setUsers((prev) => prev.filter((u) => u._id !== userId));
     } catch (err) {
       console.error("❌ Error deleting user", err);
@@ -437,11 +447,9 @@ const AdminDashboard: React.FC = () => {
         payload.userId = notificationForm.userId;
       }
 
-      const { data } = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/notifications`,
-        payload,
-        { headers: apiHeaders }
-      );
+      const { data } = await api.post("/notifications", payload, {
+        headers: apiHeaders,
+      });
 
       const created = normalizeNotification(data);
       setNotifications((prev) =>
@@ -472,8 +480,7 @@ const AdminDashboard: React.FC = () => {
     (async () => {
       try {
         setHcLoading(true);
-        const base = import.meta.env.VITE_API_URL;
-        const { data } = await axios.get(`${base}/api/home-collections`, {
+        const { data } = await api.get("/home-collections", {
           headers: apiHeaders,
         });
         if (!live) return;
@@ -513,13 +520,12 @@ const AdminDashboard: React.FC = () => {
         return;
       }
       try {
-        const base = import.meta.env.VITE_API_URL;
         const params = new URLSearchParams();
         params.set("page", "1");
         params.set("limit", "12");
         params.set("q", query.trim());
-        const url = `${base}/api/products/with-stats?${params.toString()}`;
-        const { data } = await axios.get(url, { headers: apiHeaders });
+        const url = `/products/with-stats?${params.toString()}`;
+        const { data } = await api.get(url, { headers: apiHeaders });
         if (!live) return;
 
         const items = Array.isArray(data?.items) ? data.items : [];
@@ -575,12 +581,11 @@ const AdminDashboard: React.FC = () => {
   const saveHomeCollections = async () => {
     try {
       setHcSaving(true);
-      const base = import.meta.env.VITE_API_URL;
       const payload = {
         recommendedIds: recommended.map((p) => p._id),
         newArrivalIds: newArrivals.map((p) => p._id),
       };
-      await axios.put(`${base}/api/home-collections`, payload, {
+      await api.put("/home-collections", payload, {
         headers: apiHeaders,
       });
       alert("تم الحفظ بنجاح ✅");
@@ -616,6 +621,7 @@ const AdminDashboard: React.FC = () => {
             <TabsTrigger value="users">المستخدمين</TabsTrigger>
             <TabsTrigger value="notifications">الإشعارات</TabsTrigger>
             <TabsTrigger value="discounts">خصومات الطلبات</TabsTrigger>
+            <TabsTrigger value="site-settings">إعدادات الموقع</TabsTrigger>
           </TabsList>
 
           {/* ======================= تبويب واجهة المتجر ======================= */}
@@ -1213,6 +1219,15 @@ const AdminDashboard: React.FC = () => {
           <TabsContent value="discounts">
             <h2 className="text-xl font-semibold mb-4">خصومات الطلبات</h2>
             <DiscountRulesManager />
+          </TabsContent>
+
+          {/* ======================= تبويب إعدادات الموقع ======================= */}
+          <TabsContent value="site-settings">
+            <SiteSettingsEditor
+              token={token}
+              categoryMap={categoryMap}
+              subCategoryImageDefaults={subCategoryImageDefaults}
+            />
           </TabsContent>
         </Tabs>
       </main>

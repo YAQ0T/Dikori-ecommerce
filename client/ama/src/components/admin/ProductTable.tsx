@@ -1,7 +1,7 @@
 // src/components/admin/ProductTable.tsx
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import VariantManagerDialog from "@/components/admin/VariantManagerDialog";
 import { useTranslation } from "@/i18n";
@@ -79,10 +79,9 @@ const ProductTable: React.FC<ProductTableProps> = ({
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/api/products/${productId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.delete(`/products/${productId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setProductsState((prev) => prev.filter((p) => p._id !== productId));
     } catch (err) {
       console.error("❌ Error deleting product", err);
@@ -104,8 +103,8 @@ const ProductTable: React.FC<ProductTableProps> = ({
     setSavingId(productId);
 
     try {
-      await axios.put(
-        `${import.meta.env.VITE_API_URL}/api/products/${productId}`,
+      await api.put(
+        `/products/${productId}`,
         { priority: clean },
         { headers: { Authorization: `Bearer ${token}` } }
       );

@@ -3,6 +3,7 @@ const router = express.Router();
 const nodemailer = require("nodemailer");
 const axios = require("axios");
 const { createRateLimiter } = require("../utils/rateLimit");
+const { validateBody, z } = require("../utils/validate");
 
 const contactLimiter = createRateLimiter({
   windowMs: 10 * 60 * 1000,
@@ -11,23 +12,19 @@ const contactLimiter = createRateLimiter({
   name: "contact",
 });
 
+const contactSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  email: z.string().trim().email().max(320),
+  message: z.string().trim().min(1).max(5000),
+  recaptchaToken: z.string().optional(),
+});
+
 /**
  * POST /api/contact
  * Body: { name, email, message, recaptchaToken? }
  */
-router.post("/", contactLimiter, async (req, res) => {
+router.post("/", contactLimiter, validateBody(contactSchema), async (req, res) => {
   const { name, email, message, recaptchaToken } = req.body || {};
-
-  if (!name || !email || !message) {
-    return res.status(400).json({ error: "جميع الحقول مطلوبة" });
-  }
-  if (
-    String(name).length > 200 ||
-    String(email).length > 320 ||
-    String(message).length > 5000
-  ) {
-    return res.status(400).json({ error: "المدخلات أطول من المسموح" });
-  }
 
   try {
     // Optional reCAPTCHA verification if token + secret exist

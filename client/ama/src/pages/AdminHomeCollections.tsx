@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -39,12 +39,6 @@ export default function AdminHomeCollections() {
   const [results, setResults] = useState<ProductLite[]>([]);
   const [tab, setTab] = useState<"recommended" | "new">("recommended");
 
-  // تنظيف baseURL من أي سلاش زائد
-  const baseURL = useMemo(() => {
-    const raw = import.meta.env.VITE_API_URL || "";
-    return raw.replace(/\/+$/, "");
-  }, []);
-
   // هيدرز موحّدة
   const headers = useMemo(() => {
     const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -66,9 +60,7 @@ export default function AdminHomeCollections() {
     (async () => {
       try {
         setLoading(true);
-        const { data } = await axios.get(`${baseURL}/api/home-collections`, {
-          headers,
-        });
+        const { data } = await api.get("/home-collections", { headers });
 
         if (!live) return;
 
@@ -95,7 +87,7 @@ export default function AdminHomeCollections() {
     return () => {
       live = false;
     };
-  }, [baseURL, headers]);
+  }, [headers]);
 
   // بحث سريع عن المنتجات لإضافتها
   useEffect(() => {
@@ -110,8 +102,8 @@ export default function AdminHomeCollections() {
         params.set("page", "1");
         params.set("limit", "12");
         params.set("q", query.trim());
-        const url = `${baseURL}/api/products/with-stats?${params.toString()}`;
-        const { data } = await axios.get(url, { headers });
+        const url = `/products/with-stats?${params.toString()}`;
+        const { data } = await api.get(url, { headers });
         if (!live) return;
         const items = Array.isArray(data?.items) ? data.items : [];
         const mapped: ProductLite[] = items.map((p: any) => ({
@@ -132,7 +124,7 @@ export default function AdminHomeCollections() {
       clearTimeout(t);
       live = false;
     };
-  }, [query, headers, baseURL]);
+  }, [query, headers]);
 
   const addToList = (p: ProductLite) => {
     const existsInRec = recommended.some((x) => x._id === p._id);
@@ -174,11 +166,7 @@ export default function AdminHomeCollections() {
         newArrivals: newArrivals.map((p) => p._id),
       };
 
-      const { data } = await axios.put(
-        `${baseURL}/api/home-collections`,
-        payload,
-        { headers }
-      );
+      const { data } = await api.put("/home-collections", payload, { headers });
 
       // إن رجّع السيرفر بيانات محدثة بعد الحفظ، نحدّث الحالة
       if (data?.recommended || data?.newArrivals) {

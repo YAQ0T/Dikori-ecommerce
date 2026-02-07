@@ -1,7 +1,7 @@
 // src/pages/UserOrderDetails.tsx
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -19,17 +19,12 @@ const UserOrderDetails: React.FC = () => {
       return;
     }
 
-    axios
-      .get(
-        `${import.meta.env.VITE_API_URL}/api/orders/user/${
-          user._id
-        }/order/${orderId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      )
+    api
+      .get(`/orders/user/${user._id}/order/${orderId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
       .then((res) => setOrder(res.data))
       .catch((err) => {
         console.error("فشل في جلب تفاصيل الطلب", err);

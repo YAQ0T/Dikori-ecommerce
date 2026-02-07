@@ -6,6 +6,26 @@ const mongoose = require("mongoose");
 const Variant = require("../models/Variant");
 const Product = require("../models/Product");
 const DiscountRule = require("../models/DiscountRule");
+const { validateBody, z } = require("../utils/validate");
+
+const applyDiscountSchema = z.object({
+  items: z
+    .array(
+      z
+        .object({
+          productId: z.string().min(1),
+          quantity: z.coerce.number().optional(),
+          sku: z.string().optional(),
+          color: z.string().optional(),
+          measure: z.string().optional(),
+          selectedColor: z.string().optional(),
+          selectedMeasure: z.string().optional(),
+          name: z.string().optional(),
+        })
+        .passthrough()
+    )
+    .min(1),
+});
 
 // ===== Helpers (نفس منطق الأسعار والخصم المستخدم في orders.js) =====
 function isDiscountActive(discount = {}) {
@@ -46,7 +66,7 @@ async function findBestDiscountRule(subtotal) {
  * - نتجاهل أي "price" مرسل من العميل ونقرأ السعر من الـ Variant (لمنع التلاعب).
  * - لا نتحقق من المخزون هنا (اختياري)، لأن الهدف معاينة الخصم فقط.
  */
-router.post("/apply", async (req, res) => {
+router.post("/apply", validateBody(applyDiscountSchema), async (req, res) => {
   try {
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     if (!items.length) {

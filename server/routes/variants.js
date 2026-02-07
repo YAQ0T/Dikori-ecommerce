@@ -9,6 +9,56 @@ const {
   isDealerOrAdmin,
   verifyTokenOptional,
 } = require("../middleware/authMiddleware");
+const { validateBody, validateParams, z } = require("../utils/validate");
+
+const idParamSchema = z.object({ id: z.string().min(1) });
+const variantSchema = z
+  .object({
+    product: z.string().optional(),
+    measure: z.string().optional(),
+    measureUnit: z.string().optional(),
+    color: z
+      .object({
+        name: z.string().optional(),
+        code: z.string().optional(),
+        images: z.array(z.string()).optional(),
+      })
+      .optional(),
+    price: z
+      .object({
+        amount: z.coerce.number().optional(),
+        compareAt: z.coerce.number().optional(),
+        currency: z.string().optional(),
+        discount: z
+          .object({
+            type: z.enum(["percent", "amount"]).optional(),
+            value: z.coerce.number().optional(),
+            startAt: z.string().optional(),
+            endAt: z.string().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    stock: z
+      .object({
+        inStock: z.coerce.number().optional(),
+        sku: z.string().optional(),
+      })
+      .optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+const reserveSchema = z.object({
+  qty: z.coerce.number().int().positive().optional(),
+});
+
+const discountSchema = z.object({
+  type: z.enum(["percent", "amount"]),
+  value: z.coerce.number().nonnegative(),
+  startAt: z.string().optional(),
+  endAt: z.string().optional(),
+});
 
 /* =========================
  * Helpers
@@ -152,7 +202,12 @@ router.get("/", verifyTokenOptional, async (req, res) => {
  * إنشاء متغيّر جديد
  * الوصول: أدمن أو تاجر
  * ========================= */
-router.post("/", verifyToken, isDealerOrAdmin, async (req, res) => {
+router.post(
+  "/",
+  verifyToken,
+  isDealerOrAdmin,
+  validateBody(variantSchema),
+  async (req, res) => {
   try {
     const body = req.body || {};
     // تأمين compareAt
@@ -165,14 +220,21 @@ router.post("/", verifyToken, isDealerOrAdmin, async (req, res) => {
     console.error("POST /api/variants error:", err);
     return res.status(400).json({ message: err.message });
   }
-});
+  }
+);
 
 /* =========================
  * PUT /api/variants/:id
  * تعديل متغيّر
  * الوصول: أدمن أو تاجر
  * ========================= */
-router.put("/:id", verifyToken, isDealerOrAdmin, async (req, res) => {
+router.put(
+  "/:id",
+  verifyToken,
+  isDealerOrAdmin,
+  validateParams(idParamSchema),
+  validateBody(variantSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id))
@@ -207,14 +269,20 @@ router.put("/:id", verifyToken, isDealerOrAdmin, async (req, res) => {
     console.error("PUT /api/variants/:id error:", err);
     return res.status(400).json({ message: err.message });
   }
-});
+  }
+);
 
 /* =========================
  * DELETE /api/variants/:id
  * حذف متغيّر
  * الوصول: أدمن أو تاجر
  * ========================= */
-router.delete("/:id", verifyToken, isDealerOrAdmin, async (req, res) => {
+router.delete(
+  "/:id",
+  verifyToken,
+  isDealerOrAdmin,
+  validateParams(idParamSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id))
@@ -229,14 +297,21 @@ router.delete("/:id", verifyToken, isDealerOrAdmin, async (req, res) => {
     console.error("DELETE /api/variants/:id error:", err);
     return res.status(500).json({ message: "خطأ في الخادم" });
   }
-});
+  }
+);
 
 /* =========================
  * POST /api/variants/:id/reserve
  * حجز/تنقيص المخزون (مثال)
  * الوصول: أدمن أو تاجر
  * ========================= */
-router.post("/:id/reserve", verifyToken, isDealerOrAdmin, async (req, res) => {
+router.post(
+  "/:id/reserve",
+  verifyToken,
+  isDealerOrAdmin,
+  validateParams(idParamSchema),
+  validateBody(reserveSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id))
@@ -255,14 +330,21 @@ router.post("/:id/reserve", verifyToken, isDealerOrAdmin, async (req, res) => {
     console.error("POST /api/variants/:id/reserve error:", err);
     return res.status(400).json({ message: err.message });
   }
-});
+  }
+);
 
 /* =========================
  * POST /api/variants/:id/discount
  * تعيين خصم للمتغيّر
  * الوصول: أدمن
  * ========================= */
-router.post("/:id/discount", verifyToken, isAdmin, async (req, res) => {
+router.post(
+  "/:id/discount",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  validateBody(discountSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id))
@@ -300,14 +382,20 @@ router.post("/:id/discount", verifyToken, isAdmin, async (req, res) => {
     console.error("POST /api/variants/:id/discount error:", err);
     return res.status(400).json({ message: err.message });
   }
-});
+  }
+);
 
 /* =========================
  * POST /api/variants/:id/discount/reset
  * إلغاء الخصم
  * الوصول: أدمن
  * ========================= */
-router.post("/:id/discount/reset", verifyToken, isAdmin, async (req, res) => {
+router.post(
+  "/:id/discount/reset",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.isValidObjectId(id))
@@ -344,6 +432,7 @@ router.post("/:id/discount/reset", verifyToken, isAdmin, async (req, res) => {
     console.error("POST /api/variants/:id/discount/reset error:", err);
     return res.status(400).json({ message: err.message });
   }
-});
+  }
+);
 
 module.exports = router;

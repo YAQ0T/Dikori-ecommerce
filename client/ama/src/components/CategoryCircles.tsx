@@ -27,6 +27,11 @@ type Props = {
    *  }
    */
   subCategoryImages?: Record<string, string>;
+  /**
+   * صور التصنيفات الرئيسية (اختياري)
+   * مفتاح الصورة هو اسم التصنيف الرئيسي
+   */
+  mainCategoryImages?: Record<string, string>;
   allValue?: string;
   labelMapper?: (value: string, type: "main" | "sub") => string;
 };
@@ -189,6 +194,7 @@ const CategoryCircles: React.FC<Props> = ({
   selectedSub,
   loading = false,
   subCategoryImages = {},
+  mainCategoryImages = {},
   allValue = "",
   labelMapper,
 }) => {
@@ -207,7 +213,8 @@ const CategoryCircles: React.FC<Props> = ({
       // رئيسي: جهّز خريطتين (نصيّة ومطبّعة)
       const mainExact = new Map<string, string>();
       const mainNorm = new Map<string, string>();
-      Object.entries(CATEGORY_IMAGES).forEach(([k, v]) => {
+      const mergedMain = { ...CATEGORY_IMAGES, ...mainCategoryImages };
+      Object.entries(mergedMain).forEach(([k, v]) => {
         mainExact.set(k, v);
         mainNorm.set(normKey(k), v);
       });
@@ -231,7 +238,7 @@ const CategoryCircles: React.FC<Props> = ({
         subImgByExact: subExact,
         subImgByNorm: subNorm,
       };
-    }, [subCategoryImages]);
+    }, [mainCategoryImages, subCategoryImages]);
 
   // ترتيب عربي + إزالة التكرار
   const normalized = useMemo(() => {

@@ -6,15 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import axios from "axios";
-
-/** ✅ قاعدة الـ API (نضمن إضافة /api مرة واحدة) */
-const RAW_BASE = (
-  import.meta.env.VITE_API_BASE?.toString() ||
-  import.meta.env.VITE_API_URL?.toString() ||
-  "http://localhost:3001"
-).replace(/\/+$/, "");
-const API_BASE = `${RAW_BASE}/api`;
+import { api, setApiToken } from "@/lib/api";
 
 type TUser = {
   _id: string;
@@ -57,9 +49,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch {
         localStorage.removeItem("user");
       }
-      axios.defaults.headers.common["Authorization"] = `Bearer ${t}`;
+      setApiToken(t);
     } else {
-      delete axios.defaults.headers.common["Authorization"];
+      setApiToken(null);
     }
     setLoading(false);
   }, []);
@@ -69,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUser(u);
     localStorage.setItem("token", t);
     localStorage.setItem("user", JSON.stringify(u));
-    axios.defaults.headers.common["Authorization"] = `Bearer ${t}`;
+    setApiToken(t);
   }, []);
 
   const logout = useCallback(() => {
@@ -77,14 +69,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setToken(null);
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    delete axios.defaults.headers.common["Authorization"];
+    setApiToken(null);
   }, []);
 
   const login = useCallback(
     async (data: LoginPayload) => {
       try {
-        const res = await axios.post(
-          `${API_BASE}/auth/login`,
+        const res = await api.post(
+          "/auth/login",
           {
             phone: data.phone?.trim() || undefined,
             email: data.email?.trim().toLowerCase() || undefined,

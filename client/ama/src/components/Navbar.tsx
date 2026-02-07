@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { Link, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import CartButton from "@/components/CartButton";
@@ -96,14 +96,11 @@ const Navbar: React.FC = () => {
     setNotificationsLoading(true);
     setNotificationsError(null);
     try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/notifications/my`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await api.get("/notifications/my", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const list = Array.isArray(response.data) ? response.data : [];
       const sorted = [...list].sort((a, b) => {
@@ -156,8 +153,8 @@ const Navbar: React.FC = () => {
       try {
         await Promise.all(
           targetIds.map((id) =>
-            axios.patch(
-              `${import.meta.env.VITE_API_URL}/api/notifications/${id}/read`,
+            api.patch(
+              `/notifications/${id}/read`,
               {},
               {
                 headers: {

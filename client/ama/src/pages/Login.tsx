@@ -5,15 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-
-/** ✅ قاعدة API موحّدة */
-const RAW_BASE = (
-  import.meta.env.VITE_API_BASE?.toString() ||
-  import.meta.env.VITE_API_URL?.toString() ||
-  "http://localhost:3001"
-).replace(/\/+$/, "");
-const API_BASE = `${RAW_BASE}/api`;
+import { api } from "@/lib/api";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -51,11 +43,7 @@ const Login: React.FC = () => {
           sessionStorage.setItem("pendingUserId", String(userId));
           // محاولـة تأكيد إرسال الرمز (في حال كنت على نسخة سيرفر قديمة)
           try {
-            await axios.post(
-              `${API_BASE}/auth/send-sms-code`,
-              { userId },
-              { headers: { "Content-Type": "application/json" } }
-            );
+            await api.post("/auth/send-sms-code", { userId });
           } catch {
             /* تجاهل - مجرد تعزيز للتجربة */
           }

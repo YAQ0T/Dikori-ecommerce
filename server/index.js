@@ -7,10 +7,15 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
+const helmet = require("helmet");
+const compression = require("compression");
 require("dotenv").config();
+const { createRateLimiter } = require("./utils/rateLimit");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+app.disable("x-powered-by");
 
 const normalizeOrigin = (value = "") => {
   if (!value) return "";
@@ -67,6 +72,49 @@ app.use(
 
 /* ---------- Trust Proxy (قبل استخدام IP) ---------- */
 app.set("trust proxy", 1);
+
+/* ---------- Security / Compression / Request ID ---------- */
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+app.use(compression());
+
+app.use((req, res, next) => {
+  req.id = crypto.randomUUID();
+  res.setHeader("X-Request-Id", req.id);
+  next();
+});
+
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    const log = {
+      level: "info",
+      requestId: req.id,
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Number(durationMs.toFixed(1)),
+      ip: req.ip,
+    };
+    console.log(JSON.stringify(log));
+  });
+  next();
+});
+
+/* ---------- Global Rate Limit ---------- */
+app.use(
+  createRateLimiter({
+    windowMs: 60_000,
+    max: 180,
+    message: "طلبات كثيرة. حاول لاحقًا.",
+    name: "global",
+  })
+);
 
 /* =====================================================
  *  WEBHOOK: Lahza  (ضروري يكون قبل express.json)
@@ -355,6 +403,7 @@ app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/discount-rules", require("./routes/discountRules"));
 app.use("/api/discounts", require("./routes/discounts"));
 app.use("/api/home-collections", require("./routes/homeCollections"));
+app.use("/api/site-settings", require("./routes/siteSettings"));
 app.use("/api/recaptcha", require("./routes/recaptcha"));
 app.use("/api/payments", require("./routes/payments"));
 app.use("/api/orders", require("./routes/order-status"));
@@ -363,12 +412,14 @@ app.use("/api/orders", require("./routes/order-status"));
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
 /* ---------- Error handler ---------- */
-app.use((err, _req, res, next) => {
-  console.error("Unhandled error:", err);
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", { err, requestId: req.id });
   if (res.headersSent) {
     return next(err);
   }
-  return res.status(500).json({ message: "خطأ غير متوقع في الخادم" });
+  return res
+    .status(500)
+    .json({ message: "خطأ غير متوقع في الخادم", requestId: req.id });
 });
 
 /* ---------- boot ---------- */

@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import axios from "axios";
+import { api } from "@/lib/api";
 import OrderDetailsContent from "@/components/common/OrderDetailsContent";
 import { useTranslation } from "@/i18n";
 
@@ -37,14 +37,11 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/api/orders/${selectedOrder._id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      await api.delete(`/orders/${selectedOrder._id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       const updatedOrders = orders.filter((o) => o._id !== selectedOrder._id);
       setOrders(updatedOrders);
@@ -67,11 +64,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
 
     try {
       setMarkingPaid(true);
-      const base = import.meta.env.VITE_API_URL;
-      const { data } = await axios.patch(
-        `${base}/api/orders/by-reference/${encodeURIComponent(
-          selectedOrder.reference
-        )}/pay`,
+      const { data } = await api.patch(
+        `/orders/by-reference/${encodeURIComponent(selectedOrder.reference)}/pay`,
         {},
         {
           headers: {

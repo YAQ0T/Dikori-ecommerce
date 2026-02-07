@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { api } from "@/lib/api";
 
 type OrderSummary = {
   id?: string;
@@ -282,16 +283,15 @@ const CheckoutSuccess: React.FC = () => {
         }
 
         // 1) تحقق من السيرفر
-        const base = import.meta.env.VITE_API_URL || "";
-        const verifyResp = await fetch(`${base}/api/payments/status/${ref}`);
-        if (!verifyResp.ok) {
+        const verifyResp = await api.get(`/payments/status/${ref}`);
+        const verifyJson = (verifyResp as any)?.data || {};
+        if (!verifyJson) {
           setState("fail");
           setMessage("تعذر التحقق من الدفع من السيرفر.");
           return;
         }
 
-        const verifyJson = await verifyResp.json();
-        const verifyData = (verifyJson as any)?.data || {};
+        const verifyData = (verifyJson as any)?.data || verifyJson || {};
         const metadata = parseMetadata((verifyData as any)?.metadata);
         const status = String((verifyData as any)?.status || "").toLowerCase();
 
@@ -301,28 +301,27 @@ const CheckoutSuccess: React.FC = () => {
           return;
         }
 
-        const confirmResp = await fetch(
-          `${base}/api/payments/status/${ref}/confirm`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-
-        if (!confirmResp.ok) {
+        const confirmResp = await api.post(`/payments/status/${ref}/confirm`, {});
+        const confirmJson = (confirmResp as any)?.data || {};
+        if (!confirmJson) {
           setState("fail");
           setMessage("تعذر تثبيت حالة الدفع على الطلب.");
           return;
         }
 
-        const confirmJson = await confirmResp.json();
-        const confirmData = (confirmJson as any)?.data || {};
+        const confirmData = (confirmJson as any)?.data || confirmJson || {};
         const confirmInnerData =
           confirmData && typeof confirmData === "object" && "data" in confirmData
             ? (confirmData as Record<string, unknown>).data
             : confirmData;
-        const confirmStatus = String(confirmJson?.status || "").toLowerCase();
-        if (confirmStatus !== "success" || confirmJson?.mismatch) {
+        const confirmStatus = String(
+          confirmJson?.status || confirmData?.status || ""
+        ).toLowerCase();
+        if (
+          confirmStatus !== "success" ||
+          confirmJson?.mismatch ||
+          confirmData?.mismatch
+        ) {
           setState("fail");
           setMessage("حدث خلل أثناء تثبيت الدفع على الطلب.");
           return;
@@ -334,14 +333,14 @@ const CheckoutSuccess: React.FC = () => {
         // محاولة جلب بيانات الطلب من الخادم بالمرجع لضمان عرض معلومات دقيقة
         if (user && token) {
           try {
-            const orderResp = await fetch(
-              `${base}/api/orders/by-reference/${ref}`,
+            const orderResp = await api.get(
+              `/orders/by-reference/${ref}`,
               {
                 headers: { Authorization: `Bearer ${token}` },
               }
             );
-            if (orderResp.ok) {
-              orderData = await orderResp.json();
+            if (orderResp?.data) {
+              orderData = orderResp.data;
               summary = {
                 id: orderData?._id,
                 reference: orderData?.reference || ref,
@@ -355,9 +354,9 @@ const CheckoutSuccess: React.FC = () => {
                 cardLast4: orderData?.paymentCardLast4,
                 orderDate: orderData?.createdAt || orderData?.updatedAt,
               };
-            } else if (confirmJson?.orderId) {
+            } else if (confirmJson?.orderId || confirmData?.orderId) {
               summary = {
-                id: confirmJson.orderId,
+                id: confirmJson.orderId || confirmData?.orderId,
                 reference: ref,
               };
             }
@@ -378,6 +377,7 @@ const CheckoutSuccess: React.FC = () => {
                 metaObj.orderId ||
                 metaObj.order_id ||
                 confirmJson?.orderId ||
+                confirmData?.orderId ||
                 undefined,
               reference: ref,
               total:
@@ -412,8 +412,8 @@ const CheckoutSuccess: React.FC = () => {
           }
         }
 
-        if (!summary && confirmJson?.orderId) {
-          summary = { reference: ref, id: confirmJson.orderId };
+        if (!summary && (confirmJson?.orderId || confirmData?.orderId)) {
+          summary = { reference: ref, id: confirmJson.orderId || confirmData?.orderId };
         }
 
         const mergedCardInfo = mergeCardInfo([

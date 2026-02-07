@@ -13,11 +13,24 @@ const {
   extractPaymentTokenFromRequest,
   verifyPaymentToken,
 } = require("../utils/paymentTokens");
+const { validateBody, validateParams, z } = require("../utils/validate");
 
 const router = express.Router();
 
 const LAHZA_SECRET_KEY = process.env.LAHZA_SECRET_KEY || "";
 const DEFAULT_CURRENCY = process.env.PAY_CURRENCY || "ILS";
+
+const paymentCreateSchema = z.object({
+  orderId: z.string().min(1),
+  currency: z.string().optional(),
+  email: z.string().email().optional(),
+  name: z.string().optional(),
+  mobile: z.string().optional(),
+  callback_url: z.string().min(1),
+  metadata: z.record(z.any()).optional(),
+});
+
+const referenceParamSchema = z.object({ reference: z.string().min(1) });
 
 function splitName(fullName = "") {
   const s = String(fullName || "")
@@ -72,7 +85,11 @@ function sanitizeVerification(verification = {}) {
   };
 }
 
-router.post("/create", verifyTokenOptional, async (req, res) => {
+router.post(
+  "/create",
+  verifyTokenOptional,
+  validateBody(paymentCreateSchema),
+  async (req, res) => {
   try {
     if (!LAHZA_SECRET_KEY) {
       return res.status(500).json({ error: "LAHZA secret key is missing" });
@@ -174,9 +191,14 @@ router.post("/create", verifyTokenOptional, async (req, res) => {
       .status(502)
       .json({ error: "Could not create transaction with provider" });
   }
-});
+  }
+);
 
-router.get("/status/:reference", verifyTokenOptional, async (req, res) => {
+router.get(
+  "/status/:reference",
+  verifyTokenOptional,
+  validateParams(referenceParamSchema),
+  async (req, res) => {
   try {
     if (!LAHZA_SECRET_KEY) {
       return res.status(500).json({ error: "LAHZA secret key is missing" });
@@ -212,9 +234,14 @@ router.get("/status/:reference", verifyTokenOptional, async (req, res) => {
     console.error("payments/status error:", err?.message || err);
     return res.status(500).json({ error: "خطأ في التحقق من الحالة" });
   }
-});
+  }
+);
 
-router.post("/status/:reference/confirm", verifyTokenOptional, async (req, res) => {
+router.post(
+  "/status/:reference/confirm",
+  verifyTokenOptional,
+  validateParams(referenceParamSchema),
+  async (req, res) => {
   try {
     if (!LAHZA_SECRET_KEY) {
       return res.status(500).json({ error: "LAHZA secret key is missing" });
@@ -297,6 +324,7 @@ router.post("/status/:reference/confirm", verifyTokenOptional, async (req, res) 
     console.error("payments/confirm error:", err?.message || err);
     return res.status(500).json({ error: "فشل تأكيد الدفع" });
   }
-});
+  }
+);
 
 module.exports = router;

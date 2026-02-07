@@ -3,12 +3,13 @@ import React, { useState, useEffect, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { getLocalizedText } from "@/lib/localized";
 import { useLanguage } from "@/context/LanguageContext";
 import QuantityInput from "@/components/common/QuantityInput";
+import { useNavigate } from "react-router-dom";
 
 // reCAPTCHA v3
 import {
@@ -60,6 +61,7 @@ const RECAPTCHA_MIN_SCORE = 0.5;
 //  محتوى الصفحة الحقيقي
 // ---------------------------
 const CartPageContent: React.FC = () => {
+  const navigate = useNavigate();
   const { cart, removeFromCart, updateQuantity, clearCart } = useCart();
   const { user, token } = useAuth();
   const { locale } = useLanguage();
@@ -121,11 +123,7 @@ const CartPageContent: React.FC = () => {
         const headers = token
           ? { Authorization: `Bearer ${token}` }
           : undefined;
-        const res = await axios.post(
-          `${import.meta.env.VITE_API_URL}/api/discounts/apply`,
-          payload,
-          { headers }
-        );
+        const res = await api.post("/discounts/apply", payload, { headers });
         setPreview(res.data as DiscountPreview);
       } catch (err) {
         console.error("فشل في معاينة الخصم:", err);
@@ -196,8 +194,8 @@ const CartPageContent: React.FC = () => {
       const recaptchaToken = await getRecaptchaToken();
 
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/orders`,
+      await api.post(
+        "/orders",
         {
           recaptchaToken,
           recaptchaAction: RECAPTCHA_ACTION,
@@ -221,7 +219,7 @@ const CartPageContent: React.FC = () => {
       );
 
       clearCart();
-      window.location.href = "/checkout/success?method=cod";
+      navigate("/checkout/success?method=cod");
     } catch (e: any) {
       console.error(e);
       alert(e?.response?.data?.message || "تعذر إنشاء طلب الدفع عند التوصيل");
@@ -250,8 +248,8 @@ const CartPageContent: React.FC = () => {
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
       // 1) إنشاء طلب مبدئي (pending/unpaid)
-      const prep = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/orders/prepare-card`,
+      const prep = await api.post(
+        "/orders/prepare-card",
         {
           recaptchaToken,
           recaptchaAction: RECAPTCHA_ACTION,
@@ -290,8 +288,8 @@ const CartPageContent: React.FC = () => {
       const mobile = normalizeMobile(
         userData.phone || (user as any)?.phone || ""
       );
-      const resp = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/payments/create`,
+      const resp = await api.post(
+        "/payments/create",
         {
           orderId,
           amountMinor,

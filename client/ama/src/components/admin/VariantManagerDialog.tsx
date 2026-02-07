@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/context/LanguageContext";
 import { getLocalizedText } from "@/lib/localized";
-import axios from "axios";
+import { api } from "@/lib/api";
 
 type Price = {
   amount: number;
@@ -98,10 +98,6 @@ const VariantManagerDialog: React.FC<Props> = ({
   const [discountStart, setDiscountStart] = useState<string>("");
   const [discountEnd, setDiscountEnd] = useState<string>("");
 
-  const baseURL = useMemo(
-    () => (import.meta.env.VITE_API_URL || "").replace(/\/+$/, ""),
-    []
-  );
   const headers = useMemo(
     () => ({
       Authorization: `Bearer ${token}`,
@@ -118,7 +114,7 @@ const VariantManagerDialog: React.FC<Props> = ({
   const fetchVariants = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get(`${baseURL}/api/variants`, {
+      const { data } = await api.get("/variants", {
         params: { product: product._id, limit: 500 },
         headers,
       });
@@ -170,7 +166,7 @@ const VariantManagerDialog: React.FC<Props> = ({
   const createVariant = async () => {
     try {
       const payload = form;
-      const { data } = await axios.post(`${baseURL}/api/variants`, payload, {
+      const { data } = await api.post("/variants", payload, {
         headers,
       });
       setVariants((prev) => [data, ...prev]);
@@ -226,11 +222,9 @@ const VariantManagerDialog: React.FC<Props> = ({
     try {
       const payload = { ...form };
       delete (payload as any)._id;
-      const { data } = await axios.put(
-        `${baseURL}/api/variants/${isEditingId}`,
-        payload,
-        { headers }
-      );
+      const { data } = await api.put(`/variants/${isEditingId}`, payload, {
+        headers,
+      });
       setVariants((prev) =>
         prev.map((x) => (x._id === isEditingId ? data : x))
       );
@@ -245,7 +239,7 @@ const VariantManagerDialog: React.FC<Props> = ({
     if (!id) return;
     if (!confirm("هل أنت متأكد من حذف هذا المتغيّر؟")) return;
     try {
-      await axios.delete(`${baseURL}/api/variants/${id}`, { headers });
+      await api.delete(`/variants/${id}`, { headers });
       setVariants((prev) => prev.filter((x) => x._id !== id));
       onChanged?.();
     } catch (e: any) {
@@ -284,8 +278,8 @@ const VariantManagerDialog: React.FC<Props> = ({
         startAt: discountStart || undefined,
         endAt: discountEnd || undefined,
       };
-      const { data } = await axios.post(
-        `${baseURL}/api/variants/${discountTargetId}/discount`,
+      const { data } = await api.post(
+        `/variants/${discountTargetId}/discount`,
         payload,
         { headers }
       );
@@ -302,8 +296,8 @@ const VariantManagerDialog: React.FC<Props> = ({
   const resetDiscount = async (id?: string) => {
     if (!id) return;
     try {
-      const { data } = await axios.post(
-        `${baseURL}/api/variants/${id}/discount/reset`,
+      const { data } = await api.post(
+        `/variants/${id}/discount/reset`,
         { type: "percent", value: 0 },
         { headers }
       );

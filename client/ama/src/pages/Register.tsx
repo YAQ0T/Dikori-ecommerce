@@ -4,15 +4,7 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-
-/** ✅ قاعدة API موحّدة (تعمل مع VITE_API_BASE أو VITE_API_URL) */
-const RAW_BASE = (
-  import.meta.env.VITE_API_BASE?.toString() ||
-  import.meta.env.VITE_API_URL?.toString() ||
-  "http://localhost:3001"
-).replace(/\/+$/, "");
-const API_BASE = `${RAW_BASE}/api`;
+import { api } from "@/lib/api";
 
 function normalizePhone(p: string) {
   if (!p) return "";
@@ -61,7 +53,7 @@ const Register: React.FC = () => {
       setLoading(true);
 
       // ✅ التصحيح هنا: نستخدم /auth/signup بدل /auth/register
-      const res = await axios.post(`${API_BASE}/auth/signup`, payload, {
+      const res = await api.post("/auth/signup", payload, {
         headers: { "Content-Type": "application/json" },
       });
 

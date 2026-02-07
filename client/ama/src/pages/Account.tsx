@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
-import axios from "axios";
+import { api } from "@/lib/api";
 
 const MAX_NOTIFICATIONS = 5;
 const ORDERS_PER_PAGE = 5;
@@ -59,8 +59,8 @@ const Account: React.FC = () => {
       setNotificationsError(null);
       let cancelled = false;
 
-      axios
-        .get(`${import.meta.env.VITE_API_URL}/api/notifications/my`, {
+      api
+        .get("/notifications/my", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -85,8 +85,8 @@ const Account: React.FC = () => {
           setNotificationsLoading(false);
         });
 
-      axios
-        .get(`${import.meta.env.VITE_API_URL}/api/orders/user/${user._id}`, {
+      api
+        .get(`/orders/user/${user._id}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -125,8 +125,8 @@ const Account: React.FC = () => {
   const handleMarkAsRead = async (notificationId: string) => {
     if (!token) return;
     try {
-      await axios.patch(
-        `${import.meta.env.VITE_API_URL}/api/notifications/${notificationId}/read`,
+      await api.patch(
+        `/notifications/${notificationId}/read`,
         {},
         {
           headers: {

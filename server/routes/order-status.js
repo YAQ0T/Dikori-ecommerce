@@ -3,8 +3,20 @@ const express = require("express");
 const mongoose = require("mongoose");
 const { verifyToken, isAdmin } = require("../middleware/authMiddleware");
 const Order = require("../models/Order");
+const { validateBody, validateParams, z } = require("../utils/validate");
 
 const router = express.Router();
+
+const idParamSchema = z.object({ id: z.string().min(1) });
+const statusSchema = z.object({
+  status: z.enum([
+    "waiting_confirmation",
+    "pending",
+    "on_the_way",
+    "delivered",
+    "cancelled",
+  ]),
+});
 
 /**
  * PATCH /api/orders/:id/status
@@ -13,7 +25,13 @@ const router = express.Router();
  * - تحقّق من ObjectId وصحة القيمة ضمن enum
  * - يعيد الطلب بعد التحديث
  */
-router.patch("/:id/status", verifyToken, isAdmin, async (req, res) => {
+router.patch(
+  "/:id/status",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  validateBody(statusSchema),
+  async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -59,6 +77,7 @@ router.patch("/:id/status", verifyToken, isAdmin, async (req, res) => {
     console.error("❌ فشل تحديث حالة الطلب:", err);
     return res.status(500).json({ message: "حدث خطأ أثناء تحديث الحالة" });
   }
-});
+  }
+);
 
 module.exports = router;

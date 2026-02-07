@@ -5,9 +5,29 @@ const mongoose = require("mongoose");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 const { verifyToken, isAdmin } = require("../middleware/authMiddleware");
+const { validateBody, validateParams, z } = require("../utils/validate");
+
+const idParamSchema = z.object({ id: z.string().min(1) });
+
+const createNotificationSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    message: z.string().trim().min(1),
+    target: z.enum(["all", "user"]).optional(),
+    userId: z.string().optional(),
+  })
+  .refine((data) => (data.target === "user" ? !!data.userId : true), {
+    message: "user_required",
+    path: ["userId"],
+  });
 
 // ✅ إنشاء إشعار جديد (أدمن فقط)
-router.post("/", verifyToken, isAdmin, async (req, res) => {
+router.post(
+  "/",
+  verifyToken,
+  isAdmin,
+  validateBody(createNotificationSchema),
+  async (req, res) => {
   const { title, message, target = "all", userId } = req.body || {};
 
   const trimmedTitle = String(title || "").trim();
@@ -54,7 +74,8 @@ router.post("/", verifyToken, isAdmin, async (req, res) => {
       .status(500)
       .json({ message: "تعذّر إنشاء الإشعار، حاول مرة أخرى لاحقًا" });
   }
-});
+  }
+);
 
 // ✅ جلب كل الإشعارات (أدمن فقط)
 router.get("/", verifyToken, isAdmin, async (_req, res) => {
@@ -113,7 +134,11 @@ router.get("/my", verifyToken, async (req, res) => {
 });
 
 // ✅ تعليم الإشعار كمقروء للمستخدم الحالي
-router.patch("/:id/read", verifyToken, async (req, res) => {
+router.patch(
+  "/:id/read",
+  verifyToken,
+  validateParams(idParamSchema),
+  async (req, res) => {
   const userId = req.user?.id;
   const { id } = req.params;
 
@@ -158,10 +183,16 @@ router.patch("/:id/read", verifyToken, async (req, res) => {
       .status(500)
       .json({ message: "تعذّر تحديث الإشعار، حاول مرة أخرى لاحقًا" });
   }
-});
+  }
+);
 
 // ✅ حذف إشعار (أدمن فقط)
-router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
+router.delete(
+  "/:id",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  async (req, res) => {
   const { id } = req.params;
 
   if (!mongoose.isValidObjectId(id)) {
@@ -185,6 +216,7 @@ router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
       .status(500)
       .json({ message: "تعذّر حذف الإشعار، حاول مرة أخرى لاحقًا" });
   }
-});
+  }
+);
 
 module.exports = router;

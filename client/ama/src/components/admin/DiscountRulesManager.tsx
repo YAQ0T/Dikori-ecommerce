@@ -1,6 +1,6 @@
 // src/components/admin/DiscountRulesManager.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,10 +52,7 @@ const DiscountRulesManager: React.FC = () => {
   const loadRules = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/discount-rules`,
-        { headers }
-      );
+      const res = await api.get("/discount-rules", { headers });
       setRules(res.data || []);
     } catch (e: any) {
       console.error(e);
@@ -82,18 +79,12 @@ const DiscountRulesManager: React.FC = () => {
     setSaving(true);
     try {
       if (editId) {
-        const res = await axios.patch(
-          `${import.meta.env.VITE_API_URL}/api/discount-rules/${editId}`,
-          form,
-          { headers }
-        );
+        const res = await api.patch(`/discount-rules/${editId}`, form, {
+          headers,
+        });
         setRules((prev) => prev.map((r) => (r._id === editId ? res.data : r)));
       } else {
-        const res = await axios.post(
-          `${import.meta.env.VITE_API_URL}/api/discount-rules`,
-          form,
-          { headers }
-        );
+        const res = await api.post("/discount-rules", form, { headers });
         setRules((prev) => [...prev, res.data]);
       }
       resetForm();
@@ -123,10 +114,7 @@ const DiscountRulesManager: React.FC = () => {
     if (!id) return;
     if (!confirm(t("admin.discountRules.confirmDelete"))) return;
     try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/api/discount-rules/${id}`,
-        { headers }
-      );
+      await api.delete(`/discount-rules/${id}`, { headers });
       setRules((prev) => prev.filter((r) => r._id !== id));
     } catch (e: any) {
       console.error(e);

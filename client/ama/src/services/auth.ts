@@ -1,12 +1,4 @@
-import axios from "axios";
-
-const RAW = import.meta.env.VITE_API_URL || "";
-const BASE = RAW.replace(/\/+$/, ""); // تنظيف أي سلاش زائد في النهاية
-
-const api = axios.create({
-  baseURL: `${BASE}/api`, // ✅ كل شيء يمر عبر /api
-  headers: { "Content-Type": "application/json" },
-});
+import { api } from "@/lib/api";
 
 export type LoginDto = { email: string; password: string };
 export type RegisterDto = { name: string; email: string; password: string };
@@ -25,7 +17,7 @@ export async function login(dto: LoginDto) {
 }
 
 export async function register(dto: RegisterDto) {
-  const { data } = await api.post("/auth/register", dto);
+  const { data } = await api.post("/auth/signup", dto);
   return data;
 }
 
@@ -39,7 +31,7 @@ export async function me(token?: string) {
 /** إرسال رابط إعادة تعيين كلمة المرور إلى البريد */
 export async function forgotPassword(dto: ForgotDto) {
   // ✅ لاحظ /api في baseURL
-  const { data } = await api.post("/auth/password/forgot", dto);
+  const { data } = await api.post("/auth/password/request-reset", dto);
   return data; // { message: "..." }
 }
 

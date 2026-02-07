@@ -7,6 +7,7 @@ const User = require("../models/User");
 const { getJwtSecret } = require("../utils/config");
 const { sendSMSHTD, normalizePhone } = require("../utils/smsHtd");
 const { createRateLimiter } = require("../utils/rateLimit");
+const { validateBody, z } = require("../utils/validate");
 
 const router = express.Router();
 
@@ -86,6 +87,66 @@ const limiterVerifySms = createRateLimiter({
   name: "auth-verify-sms",
 });
 
+const signupSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    password: z.string().min(6),
+    phone: z.coerce.string().optional(),
+    email: z.string().email().optional(),
+  })
+  .refine((data) => data.phone || data.email, {
+    message: "phone_or_email_required",
+    path: ["phone"],
+  });
+
+const loginSchema = z
+  .object({
+    password: z.string().min(1),
+    phone: z.coerce.string().optional(),
+    email: z.string().email().optional(),
+  })
+  .refine((data) => data.phone || data.email, {
+    message: "phone_or_email_required",
+    path: ["phone"],
+  });
+
+const sendSmsSchema = z
+  .object({
+    userId: z.string().optional(),
+    phone: z.coerce.string().optional(),
+  })
+  .refine((data) => data.userId || data.phone, {
+    message: "userId_or_phone_required",
+    path: ["userId"],
+  });
+
+const verifySmsSchema = z.object({
+  userId: z.string().min(1),
+  code: z.coerce.string().min(4),
+});
+
+const passwordRequestSchema = z
+  .object({
+    phone: z.coerce.string().optional(),
+    email: z.string().email().optional(),
+  })
+  .refine((data) => data.phone || data.email, {
+    message: "phone_or_email_required",
+    path: ["phone"],
+  });
+
+const passwordResetSchema = z
+  .object({
+    token: z.string().min(1),
+    password: z.string().min(6),
+    email: z.string().email().optional(),
+    phone: z.coerce.string().optional(),
+  })
+  .refine((data) => data.email || data.phone, {
+    message: "phone_or_email_required",
+    path: ["phone"],
+  });
+
 function normalizeEmail(email) {
   if (!email) return null;
   const e = String(email).trim().toLowerCase();
@@ -130,7 +191,7 @@ async function setPhoneOTPOnUser(user, code) {
 /* =========================
    إنشاء حساب
 ========================= */
-router.post("/signup", limiterSignup, async (req, res) => {
+router.post("/signup", limiterSignup, validateBody(signupSchema), async (req, res) => {
   try {
     const { name, phone, email, password } = req.body || {};
 
@@ -206,7 +267,11 @@ router.post("/signup", limiterSignup, async (req, res) => {
 /* =========================
    إرسال كود SMS (اختياري)
 ========================= */
-router.post("/send-sms-code", limiterSendSms, async (req, res) => {
+router.post(
+  "/send-sms-code",
+  limiterSendSms,
+  validateBody(sendSmsSchema),
+  async (req, res) => {
   try {
     const { userId, phone } = req.body || {};
 
@@ -241,12 +306,17 @@ router.post("/send-sms-code", limiterSendSms, async (req, res) => {
     console.error("send-sms-code error:", err);
     res.status(500).json({ error: err.message });
   }
-});
+  }
+);
 
 /* =========================
    توثيق رمز الـ SMS
 ========================= */
-router.post("/verify-sms", limiterVerifySms, async (req, res) => {
+router.post(
+  "/verify-sms",
+  limiterVerifySms,
+  validateBody(verifySmsSchema),
+  async (req, res) => {
   try {
     const { userId, code } = req.body || {};
     if (!userId || !code)
@@ -297,12 +367,13 @@ router.post("/verify-sms", limiterVerifySms, async (req, res) => {
     console.error("verify-sms error:", err);
     res.status(500).json({ error: err.message });
   }
-});
+  }
+);
 
 /* =========================
    تسجيل الدخول
 ========================= */
-router.post("/login", limiterLogin, async (req, res) => {
+router.post("/login", limiterLogin, validateBody(loginSchema), async (req, res) => {
   try {
     const { phone, email, password } = req.body || {};
     if ((!phone && !email) || !password) {
@@ -369,7 +440,11 @@ router.post("/login", limiterLogin, async (req, res) => {
 /* =========================
    نسيت كلمة المرور — طلب كود
 ========================= */
-router.post("/password/request-reset", limiterPasswordRequest, async (req, res) => {
+router.post(
+  "/password/request-reset",
+  limiterPasswordRequest,
+  validateBody(passwordRequestSchema),
+  async (req, res) => {
   try {
     const { phone, email } = req.body || {};
     if (!phone && !email) {
@@ -407,12 +482,17 @@ router.post("/password/request-reset", limiterPasswordRequest, async (req, res) 
     console.error("password-request error:", err);
     res.status(500).json({ error: err.message });
   }
-});
+  }
+);
 
 /* =========================
    استكمال إعادة التعيين
 ========================= */
-router.post("/password/reset", limiterPasswordReset, async (req, res) => {
+router.post(
+  "/password/reset",
+  limiterPasswordReset,
+  validateBody(passwordResetSchema),
+  async (req, res) => {
   try {
     const { token, password, email, phone } = req.body || {};
     if (!token || !password || (!email && !phone)) {
@@ -474,6 +554,7 @@ router.post("/password/reset", limiterPasswordReset, async (req, res) => {
     console.error("password-reset error:", err);
     res.status(500).json({ error: err.message });
   }
-});
+  }
+);
 
 module.exports = router;
