@@ -322,7 +322,7 @@ const CategoryCircles: React.FC<Props> = ({
       {/* الرئيسية */}
       <div className="relative">
         <div
-          className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory pb-1"
+          className="flex justify-between sm:justify-start gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory pb-1"
           dir="rtl"
         >
           {loading
@@ -376,7 +376,7 @@ const CategoryCircles: React.FC<Props> = ({
           </div>
 
           <div
-            className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory pb-1"
+            className="flex justify-between sm:justify-start gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory pb-1"
             dir="rtl"
           >
             {loading && !activeGroup
