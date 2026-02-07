@@ -14,7 +14,6 @@ import {
   ensureLocalizedObject,
   type LocalizedText,
 } from "@/lib/localized";
-import { getColorLabel } from "@/lib/colors";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTranslation } from "@/i18n";
 import { useQuery } from "@tanstack/react-query";
@@ -49,9 +48,6 @@ type ProductItem = {
   quantity: number;
 };
 
-type FacetItem = { name: string; slug: string };
-type Facets = { measures: FacetItem[]; colors: FacetItem[] };
-type OwnershipFilter = "all" | "ours" | "local";
 type CategoryGroup = { mainCategory: string; subCategories: string[] };
 
 type SettingsCategory = {
@@ -77,6 +73,14 @@ type SiteSettings = {
 };
 
 const PAGE_WINDOW = 5;
+const SORT_DEFAULT = "default";
+const ALLOWED_SORTS = new Set([
+  SORT_DEFAULT,
+  "priceAsc",
+  "priceDesc",
+  "nameAsc",
+  "nameDesc",
+]);
 
 /** ✅ دالة مساعدة: ما بتضيف ? إلا إذا فيه باراميترات */
 function withQuery(base: string, params: URLSearchParams) {
@@ -123,13 +127,19 @@ function slugifyLabel(value: string): string {
 }
 
 const Products: React.FC = () => {
-  const { user, token } = useAuth();
-  const canUseOwnership = user?.role === "admin" || user?.role === "dealer";
+  const { token } = useAuth();
   const { locale } = useLanguage();
 
   const { t } = useTranslation();
 
   const location = useLocation();
+
+  const initialSearch = new URLSearchParams(location.search).get("q") ?? "";
+  const initialSortParam =
+    new URLSearchParams(location.search).get("sort") ?? "";
+  const initialSort = ALLOWED_SORTS.has(initialSortParam)
+    ? initialSortParam
+    : SORT_DEFAULT;
 
   const settingsQuery = useQuery({
     queryKey: ["site-settings"],
@@ -153,21 +163,10 @@ const Products: React.FC = () => {
     return new URLSearchParams(location.search).get("sub") ?? "";
   });
 
-  const [rawSearch, setRawSearch] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [rawSearch, setRawSearch] = useState(initialSearch);
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
 
-  const [rawMaxPrice, setRawMaxPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
-
-  const [selectedColorSlug, setSelectedColorSlug] = useState("");
-  const [selectedMeasureSlug, setSelectedMeasureSlug] = useState("");
-
-  const [ownershipFilter, setOwnershipFilter] =
-    useState<OwnershipFilter>("all");
-
-  const [facets, setFacets] = useState<Facets>({ measures: [], colors: [] });
-  const [loadingFacets, setLoadingFacets] = useState(false);
-  const [facetsError, setFacetsError] = useState<string | null>(null);
+  const [sortOption, setSortOption] = useState(initialSort);
 
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
@@ -185,6 +184,9 @@ const Products: React.FC = () => {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState<number>(-1);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+  const [suggestionsQuery, setSuggestionsQuery] = useState("");
 
   const translateCategoryLabel = useCallback(
     (value: string, type: "main" | "sub") => {
@@ -254,26 +256,24 @@ const Products: React.FC = () => {
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const searchBoxWrapperRef = useRef<HTMLDivElement | null>(null);
-  const maxPriceRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
-    searchRef.current?.focus();
   }, [searchTerm]);
-
-  useEffect(() => {
-    if (!canUseOwnership && ownershipFilter !== "all") {
-      setOwnershipFilter("all");
-    }
-  }, [canUseOwnership, ownershipFilter]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const category = params.get("category") ?? "";
     const sub = params.get("sub") ?? "";
+    const q = params.get("q") ?? "";
+    const sortParam = params.get("sort") ?? "";
+    const sort = ALLOWED_SORTS.has(sortParam) ? sortParam : SORT_DEFAULT;
 
     setSelectedMainCategory((prev) => (prev === category ? prev : category));
     setSelectedSubCategory((prev) => (prev === sub ? prev : sub));
+    setSearchTerm((prev) => (prev === q ? prev : q));
+    setRawSearch((prev) => (prev === q ? prev : q));
+    setSortOption((prev) => (prev === sort ? prev : sort));
   }, [location.search]);
 
   useEffect(() => {
@@ -288,12 +288,22 @@ const Products: React.FC = () => {
     } else {
       params.delete("sub");
     }
+    if (searchTerm) {
+      params.set("q", searchTerm);
+    } else {
+      params.delete("q");
+    }
+    if (sortOption && sortOption !== SORT_DEFAULT) {
+      params.set("sort", sortOption);
+    } else {
+      params.delete("sort");
+    }
     const next = `?${params.toString()}`;
     if (next !== location.search) {
       navigate({ search: next }, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMainCategory, selectedSubCategory]);
+  }, [selectedMainCategory, selectedSubCategory, searchTerm, sortOption]);
 
   // ✅ Scroll لأعلى عند تغيير الصفحة
   useEffect(() => {
@@ -302,86 +312,7 @@ const Products: React.FC = () => {
     }
   }, [currentPage]);
 
-  // Facets
-  // ⬇️ أضف أعلى الملف مع بقية الـuseState
-  // const [loadingFacets, setLoadingFacets] = useState(false);
-  // const [facetsError, setFacetsError] = useState<string | null>(null);
-
-  // Facets
-
-  // Facets
-  useEffect(() => {
-    let ignore = false;
-    (async () => {
-      setLoadingFacets(true);
-      setFacetsError(null);
-      try {
-        const params = new URLSearchParams();
-
-        if (selectedMainCategory) {
-          params.set("mainCategory", selectedMainCategory);
-        }
-        if (selectedSubCategory) params.set("subCategory", selectedSubCategory);
-        if (searchTerm) params.set("q", searchTerm);
-        if (canUseOwnership && ownershipFilter !== "all") {
-          params.set("ownership", ownershipFilter);
-        }
-        // (اختياري) لو بدك يقيدها بأيام التحديث:
-        // if (recentDays && recentDays > 0) params.set("days", String(recentDays));
-
-        const url = withQuery("/products/facets", params);
-        const headers = token
-          ? { Authorization: `Bearer ${token}` }
-          : undefined;
-
-        const { data } = await api.get(url, { headers });
-        if (ignore) return;
-
-        const f: Facets = {
-          measures: Array.isArray(data?.measures)
-            ? data.measures.filter((m: any) => m?.slug && m?.name)
-            : [],
-          colors: Array.isArray(data?.colors)
-            ? data.colors.filter((c: any) => c?.slug && c?.name)
-            : [],
-        };
-        setFacets(f);
-
-        if (
-          f.colors.length &&
-          !f.colors.some((c) => c.slug === selectedColorSlug)
-        ) {
-          setSelectedColorSlug("");
-        }
-        if (
-          f.measures.length &&
-          !f.measures.some((m) => m.slug === selectedMeasureSlug)
-        ) {
-          setSelectedMeasureSlug("");
-        }
-      } catch (e) {
-        setFacetsError(t("productsPage.facets.error"));
-        setFacets({ measures: [], colors: [] });
-      } finally {
-        setLoadingFacets(false);
-      }
-    })();
-
-    return () => {
-      ignore = true;
-    };
-  }, [
-    selectedMainCategory,
-    selectedSubCategory,
-    searchTerm,
-    ownershipFilter,
-    canUseOwnership,
-    token,
-    // recentDays, // إذا فعّلتها فوق أضِفها هنا أيضاً
-    selectedColorSlug,
-    selectedMeasureSlug,
-    t,
-  ]);
+  // (تمت إزالة فلاتر المقاسات والألوان حسب طلبك)
 
   const productsQuery = useQuery({
     queryKey: [
@@ -390,12 +321,8 @@ const Products: React.FC = () => {
       selectedMainCategory,
       selectedSubCategory,
       searchTerm,
-      maxPrice,
-      selectedColorSlug,
-      selectedMeasureSlug,
-      ownershipFilter,
-      canUseOwnership,
-      token,
+      sortOption,
+      locale,
       recentDays,
     ],
     queryFn: async () => {
@@ -407,14 +334,9 @@ const Products: React.FC = () => {
       }
       if (selectedSubCategory) params.set("subCategory", selectedSubCategory);
       if (searchTerm) params.set("q", searchTerm);
-      if (maxPrice) params.set("maxPrice", maxPrice);
-      if (canUseOwnership && ownershipFilter !== "all") {
-        params.set("ownership", ownershipFilter);
-      }
-      const tags: string[] = [];
-      if (selectedColorSlug) tags.push(`color:${selectedColorSlug}`);
-      if (selectedMeasureSlug) tags.push(`measure:${selectedMeasureSlug}`);
-      if (tags.length) params.set("tags", tags.join(","));
+      if (sortOption && sortOption !== SORT_DEFAULT)
+        params.set("sort", sortOption);
+      if (locale) params.set("locale", locale);
       if (recentDays && recentDays > 0) {
         params.set("days", String(recentDays));
       }
@@ -424,8 +346,7 @@ const Products: React.FC = () => {
           ? "/products/recent-updates"
           : "/products/with-stats";
       const url = withQuery(endpoint, params);
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-      const res = await api.get(url, { headers });
+      const res = await api.get(url);
       const {
         items,
         totalPages: tp,
@@ -592,51 +513,69 @@ const Products: React.FC = () => {
     };
   }, [token]);
 
-  // اقتراحات البحث
-  useEffect(() => {
-    let active = true;
-    if (!rawSearch.trim()) {
+  const fetchSuggestions = useCallback(async () => {
+    const term = rawSearch.trim();
+    if (!term || term.length < 2) {
       setSuggestions([]);
+      setShowSuggestions(false);
+      setSuggestionsError(null);
+      setSuggestionsQuery("");
       return;
     }
 
-    const t = setTimeout(async () => {
-      try {
-        const headers = token
-          ? { Authorization: `Bearer ${token}` }
-          : undefined;
-        const params = new URLSearchParams();
-        params.set("page", "1");
-        params.set("limit", "10");
-        params.set("q", rawSearch.trim());
+    setSuggestionsLoading(true);
+    setSuggestionsError(null);
+    setSuggestionsQuery(term);
+    setShowSuggestions(true);
 
-        const url = withQuery("/products/with-stats", params);
+    try {
+      const params: Record<string, string> = { q: term, limit: "8" };
+      const res = await api.get("/products/suggest", { params });
+      const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      const names = Array.from(
+        new Set(
+          items
+            .map((p: any) => getLocalizedText(p?.name, locale))
+            .filter(
+              (n: string | undefined) => typeof n === "string" && n.trim()
+            )
+        )
+      ) as string[];
+      setSuggestions(names);
+      setShowSuggestions(true);
+      setHighlightIndex(-1);
+    } catch (err) {
+      console.error("failed to fetch suggestions", err);
+      setSuggestions([]);
+      setSuggestionsError(t("productsPage.filters.suggestionsError"));
+      setShowSuggestions(true);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [rawSearch, locale, t]);
 
-        const res = await api.get(url, { headers });
-        if (!active) return;
+  useEffect(() => {
+    let active = true;
+    const term = rawSearch.trim();
+    if (!term) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSuggestionsError(null);
+      setSuggestionsQuery("");
+      setSuggestionsLoading(false);
+      return;
+    }
 
-        const names = Array.from(
-          new Set(
-            (res.data?.items || [])
-              .map((p: any) => getLocalizedText(p?.name, locale))
-              .filter(
-                (n: string | undefined) => typeof n === "string" && n.trim()
-              )
-          )
-        ) as string[];
-
-        setSuggestions(names.slice(0, 10));
-      } catch {
-        if (!active) return;
-        setSuggestions([]);
-      }
-    }, 250);
+    const timer = setTimeout(() => {
+      if (!active) return;
+      fetchSuggestions();
+    }, 200);
 
     return () => {
       active = false;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
-  }, [rawSearch, token, locale]);
+  }, [rawSearch, fetchSuggestions]);
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -696,17 +635,42 @@ const Products: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products]);
 
-  const triggerSearch = () => {
-    setSearchTerm(rawSearch.trim());
+  const triggerSearch = (value?: string) => {
+    const next = (value ?? rawSearch).trim();
+    setRawSearch(next);
+    setSearchTerm(next);
     setShowSuggestions(false);
     setHighlightIndex(-1);
   };
 
-  const triggerMaxPrice = () => {
-    const v = rawMaxPrice.trim();
-    setMaxPrice(v);
-    setCurrentPage(1);
-    maxPriceRef.current?.focus();
+  const clearSearch = () => {
+    setRawSearch("");
+    setSearchTerm("");
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setHighlightIndex(-1);
+    setSuggestionsError(null);
+    setSuggestionsQuery("");
+  };
+
+  const renderHighlighted = (text: string) => {
+    if (!suggestionsQuery) return text;
+    const source = text.toLowerCase();
+    const target = suggestionsQuery.toLowerCase();
+    const idx = source.indexOf(target);
+    if (idx < 0) return text;
+    const before = text.slice(0, idx);
+    const match = text.slice(idx, idx + target.length);
+    const after = text.slice(idx + target.length);
+    return (
+      <>
+        {before}
+        <mark className="bg-amber-200/70 text-black rounded px-0.5">
+          {match}
+        </mark>
+        {after}
+      </>
+    );
   };
 
   const handleSearchKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (
@@ -725,21 +689,15 @@ const Products: React.FC = () => {
       e.preventDefault();
       if (showSuggestions && highlightIndex >= 0) {
         const chosen = suggestions[highlightIndex];
-        if (chosen) setRawSearch(chosen);
+        if (chosen) {
+          triggerSearch(chosen);
+          return;
+        }
       }
       triggerSearch();
     } else if (e.key === "Escape") {
       setShowSuggestions(false);
       setHighlightIndex(-1);
-    }
-  };
-
-  const handleMaxPriceKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (
-    e
-  ) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      triggerMaxPrice();
     }
   };
 
@@ -822,201 +780,135 @@ const Products: React.FC = () => {
         {/* فلاتر */}
         <section className="mt-4">
           <div className="surface-card p-4">
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
-            <div
-              className="relative flex w-full sm:max-w-xl"
-              ref={searchBoxWrapperRef}
-            >
-              <Input
-                ref={searchRef}
-                type="text"
-                placeholder={t("productsPage.filters.searchPlaceholder")}
-                value={rawSearch}
-                autoComplete="off"
-                onChange={(e) => {
-                  setRawSearch(e.target.value);
-                  setShowSuggestions(true);
-                  setHighlightIndex(-1);
-                }}
-                onKeyDown={handleSearchKeyDown}
-                onFocus={() => rawSearch && setShowSuggestions(true)}
-                className="pr-12"
-              />
-              <button
-                type="button"
-                onClick={triggerSearch}
-                className="absolute inset-y-0 left-0 sm:left-auto sm:right-0 sm:inset-y-0 flex items-center justify-center w-12 bg-black text-white rounded-r-md sm:rounded-l-none sm:rounded-r-md hover:bg-gray-800"
-                title={t("productsPage.filters.searchButtonTitle")}
-              >
+          <div className="grid grid-cols-1 lg:grid-cols-[1.6fr,0.6fr] gap-3 mb-4 items-center">
+            <div className="relative w-full" ref={searchBoxWrapperRef}>
+              <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2 shadow-sm transition-shadow hover:shadow-md focus-within:ring-2 focus-within:ring-primary/20">
                 <svg
                   viewBox="0 0 24 24"
-                  width="20"
-                  height="20"
+                  width="18"
+                  height="18"
+                  className="text-muted-foreground"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  aria-hidden="true"
                 >
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-              </button>
+                <Input
+                  ref={searchRef}
+                  type="text"
+                  placeholder={t("productsPage.filters.searchPlaceholder")}
+                  value={rawSearch}
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setRawSearch(e.target.value);
+                    setShowSuggestions(true);
+                    setHighlightIndex(-1);
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  className="h-10 border-0 bg-transparent px-0 text-sm focus-visible:ring-0 focus-visible:ring-offset-0"
+                />
+                {(rawSearch || searchTerm) && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="text-gray-400 transition-colors hover:text-gray-700"
+                    title={t("productsPage.filters.clearSearch")}
+                    aria-label={t("productsPage.filters.clearSearch")}
+                  >
+                    ✕
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  onClick={triggerSearch}
+                  title={t("productsPage.filters.searchButtonTitle")}
+                >
+                  {t("productsPage.filters.searchButtonTitle")}
+                </button>
+              </div>
 
-              {showSuggestions && suggestions.length > 0 && (
+              {showSuggestions && (
                 <ul
-                  className="absolute top-full mt-1 w-full z-20 bg-white border rounded-md shadow-lg max-h-64 overflow-auto text-right"
+                  className="absolute top-full mt-2 w-full z-20 bg-card border border-border rounded-2xl shadow-lg max-h-64 overflow-auto text-right"
                   role="listbox"
                 >
-                  {suggestions.map((s, idx) => (
-                    <li
-                      key={`${s}-${idx}`}
-                      role="option"
-                      aria-selected={idx === highlightIndex}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setRawSearch(s);
-                        setShowSuggestions(false);
-                        setHighlightIndex(-1);
-                        setTimeout(() => triggerSearch(), 0);
-                      }}
-                      className={`px-3 py-2 cursor-pointer transition-colors ${
-                        idx === highlightIndex
-                          ? "bg-gray-200"
-                          : "hover:bg-gray-100"
-                      }`}
-                    >
-                      {s}
+                  {suggestionsLoading ? (
+                    <li className="px-3 py-2 text-sm text-muted-foreground">
+                      {t("productsPage.filters.suggestionsLoading")}
                     </li>
-                  ))}
+                  ) : suggestionsError ? (
+                    <li className="px-3 py-2 text-sm text-red-600">
+                      {suggestionsError}
+                    </li>
+                  ) : suggestions.length === 0 ? (
+                    <li className="px-3 py-2 text-sm text-muted-foreground">
+                      {t("productsPage.filters.suggestionsEmpty")}
+                    </li>
+                  ) : (
+                    suggestions.map((s, idx) => (
+                      <li
+                        key={`${s}-${idx}`}
+                        role="option"
+                        aria-selected={idx === highlightIndex}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          triggerSearch(s);
+                        }}
+                        className={`px-3 py-2 cursor-pointer transition-colors ${
+                          idx === highlightIndex
+                            ? "bg-amber-100"
+                            : "hover:bg-amber-50"
+                        }`}
+                      >
+                        {renderHighlighted(s)}
+                      </li>
+                    ))
+                  )}
                 </ul>
               )}
             </div>
-
-            <div className="relative flex w-full sm:max-w-xs">
-              <Input
-                ref={maxPriceRef}
-                type="number"
-                placeholder={t("productsPage.filters.pricePlaceholder")}
-                value={rawMaxPrice}
-                onChange={(e) => setRawMaxPrice(e.target.value)}
-                onKeyDown={handleMaxPriceKeyDown}
-                className="pr-16"
-              />
-              <button
-                type="button"
-                onClick={triggerMaxPrice}
-                className="absolute inset-y-0 left-0 sm:left-auto sm:right-0 sm:inset-y-0 flex items-center justify-center px-3 bg-black text-white rounded-r-md sm:rounded-l-none sm:rounded-r-md hover:bg-gray-800"
-                title={t("productsPage.filters.applyPriceTitle")}
-              >
-                {t("productsPage.filters.applyPrice")}
-              </button>
-            </div>
-
-            {canUseOwnership && (
-              <select
-                className="border rounded px-3 py-2"
-                value={ownershipFilter}
-                onChange={(e) => {
-                  setOwnershipFilter(e.target.value as OwnershipFilter);
-                  setCurrentPage(1);
-                }}
-                title={t("productsPage.filters.ownership.title")}
-              >
-                <option value="all">
-                  {t("productsPage.filters.ownership.options.all")}
-                </option>
-                <option value="ours">
-                  {t("productsPage.filters.ownership.options.ours")}
-                </option>
-                <option value="local">
-                  {t("productsPage.filters.ownership.options.local")}
-                </option>
-              </select>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2 mb-6">
-            <select
-              className="border rounded px-3 py-2"
-              value={selectedColorSlug}
-              onChange={(e) => {
-                setSelectedColorSlug(e.target.value);
+            <Select
+              value={sortOption}
+              onValueChange={(value) => {
+                setSortOption(value);
                 setCurrentPage(1);
               }}
-              disabled={
-                loadingFacets || (!!facetsError && facets.colors.length === 0)
-              }
-              title={
-                loadingFacets
-                  ? t("productsPage.filters.colors.loadingTitle")
-                  : facetsError && facets.colors.length === 0
-                  ? t("productsPage.filters.colors.preFilterTitle")
-                  : undefined
-              }
             >
-              <option value="">
-                {loadingFacets
-                  ? t("productsPage.filters.colors.loadingOption")
-                  : facets.colors.length
-                  ? t("productsPage.filters.colors.allOption")
-                  : t("productsPage.filters.colors.promptOption")}
-              </option>
-              {facets.colors.map((c) => {
-                const label = getLocalizedText(getColorLabel(c.name), locale);
-                return (
-                  <option key={c.slug} value={c.slug}>
-                    {label || c.name}
-                  </option>
-                );
-              })}
-            </select>
-
-            <select
-              className="border rounded px-3 py-2"
-              value={selectedMeasureSlug}
-              onChange={(e) => {
-                setSelectedMeasureSlug(e.target.value);
-                setCurrentPage(1);
-              }}
-              disabled={
-                loadingFacets || (!!facetsError && facets.measures.length === 0)
-              }
-              title={
-                loadingFacets
-                  ? t("productsPage.filters.measures.loadingTitle")
-                  : facetsError && facets.measures.length === 0
-                  ? t("productsPage.filters.measures.preFilterTitle")
-                  : undefined
-              }
-            >
-              <option value="">
-                {loadingFacets
-                  ? t("productsPage.filters.measures.loadingOption")
-                  : facets.measures.length
-                  ? t("productsPage.filters.measures.allOption")
-                  : t("productsPage.filters.measures.promptOption")}
-              </option>
-              {facets.measures.map((m) => (
-                <option key={m.slug} value={m.slug}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-
-            {(selectedColorSlug || selectedMeasureSlug) && (
-              <button
-                onClick={() => {
-                  setSelectedColorSlug("");
-                  setSelectedMeasureSlug("");
-                  setCurrentPage(1);
-                }}
-                className="px-3 py-2 rounded bg-gray-100 hover:bg-gray-200"
+              <SelectTrigger
+                className="h-11 rounded-2xl border border-border bg-card px-4 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 text-right"
+                title={t("productsPage.filters.sortLabel")}
               >
-                {t("productsPage.filters.resetColorMeasure")}
-              </button>
-            )}
+                <SelectValue
+                  placeholder={t("productsPage.filters.sortLabel")}
+                />
+              </SelectTrigger>
+              <SelectContent className="w-[var(--radix-select-trigger-width)]">
+                <SelectItem value="default">
+                  {t("productsPage.filters.sortOptions.default")}
+                </SelectItem>
+                <SelectItem value="priceAsc">
+                  {t("productsPage.filters.sortOptions.priceAsc")}
+                </SelectItem>
+                <SelectItem value="priceDesc">
+                  {t("productsPage.filters.sortOptions.priceDesc")}
+                </SelectItem>
+                <SelectItem value="nameAsc">
+                  {t("productsPage.filters.sortOptions.nameAsc")}
+                </SelectItem>
+                <SelectItem value="nameDesc">
+                  {t("productsPage.filters.sortOptions.nameDesc")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+
+          {/* تمت إزالة فلاتر الألوان والمقاسات حسب الطلب */}
           </div>
         </section>
 

@@ -36,6 +36,11 @@ router.post(
 router.get("/with-stats", ProductsController.getWithStats);
 
 /* =========================
+ * READ suggest (خفيف للبحث)
+ * ========================= */
+router.get("/suggest", ProductsController.suggest);
+
+/* =========================
  * READ facets (colors & measures) من Variants.tags
  * (إرجاع الأسماء جاهزة بدون استخدام $replaceAll لتفادي مشاكل نسخة Mongo)
  * ========================= */

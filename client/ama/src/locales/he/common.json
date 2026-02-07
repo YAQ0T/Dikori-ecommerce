@@ -624,6 +624,19 @@
     "filters": {
       "searchPlaceholder": "חפשו לפי שם מוצר...",
       "searchButtonTitle": "חיפוש",
+      "clearSearch": "נקה חיפוש",
+      "sortLabel": "מיון לפי",
+      "sortOptions": {
+        "default": "מיון ברירת מחדל",
+        "priceAsc": "מחיר: נמוך לגבוה",
+        "priceDesc": "מחיר: גבוה לנמוך",
+        "nameAsc": "שם: א-ת",
+        "nameDesc": "שם: ת-א"
+      },
+      "suggestionsButton": "הצעות",
+      "suggestionsLoading": "טוען הצעות...",
+      "suggestionsEmpty": "אין הצעות כרגע",
+      "suggestionsError": "לא ניתן לטעון הצעות",
       "pricePlaceholder": "מחיר מרבי",
       "applyPrice": "החלה",
       "applyPriceTitle": "החלת המחיר",

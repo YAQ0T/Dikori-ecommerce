@@ -619,6 +619,19 @@
     "filters": {
       "searchPlaceholder": "ابحث باسم المنتج...",
       "searchButtonTitle": "بحث",
+      "clearSearch": "مسح البحث",
+      "sortLabel": "ترتيب حسب",
+      "sortOptions": {
+        "default": "الترتيب الافتراضي",
+        "priceAsc": "السعر: من الأقل للأعلى",
+        "priceDesc": "السعر: من الأعلى للأقل",
+        "nameAsc": "الاسم: أ-ي",
+        "nameDesc": "الاسم: ي-أ"
+      },
+      "suggestionsButton": "اقتراحات",
+      "suggestionsLoading": "جاري تحميل الاقتراحات...",
+      "suggestionsEmpty": "لا توجد اقتراحات الآن",
+      "suggestionsError": "تعذر تحميل الاقتراحات",
       "pricePlaceholder": "سعر أقصى",
       "applyPrice": "تطبيق",
       "applyPriceTitle": "تطبيق السعر",

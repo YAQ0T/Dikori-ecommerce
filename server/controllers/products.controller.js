@@ -34,12 +34,44 @@ function parsePagination(q) {
 }
 
 /** اختيار طريقة الفرز */
-function resolveSort(sort) {
-  if (sort === "priceAsc")
-    return { priorityRank: 1, minPrice: 1, createdAt: -1 };
-  if (sort === "priceDesc")
-    return { priorityRank: 1, minPrice: -1, createdAt: -1 };
+function resolveSort(sort, locale = "ar") {
+  const nameField = locale === "he" ? "name.he" : "name.ar";
+  if (sort === "priceAsc") return { minPrice: 1, createdAt: -1 };
+  if (sort === "priceDesc") return { minPrice: -1, createdAt: -1 };
+  if (sort === "nameAsc") return { [nameField]: 1, createdAt: -1 };
+  if (sort === "nameDesc") return { [nameField]: -1, createdAt: -1 };
   return { priorityRank: 1, createdAt: -1 }; // الافتراضي: الأحدث مع احترام الأولوية
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildSearchMatch(q) {
+  const term = String(q || "").trim();
+  if (!term) return null;
+
+  const quoted = term.match(/"([^"]+)"/g) || [];
+  const phrases = quoted
+    .map((p) => p.replace(/"/g, "").trim())
+    .filter(Boolean);
+  const remainder = term.replace(/"([^"]+)"/g, " ").trim();
+  const tokens = remainder.split(/\s+/).filter(Boolean);
+  const parts = Array.from(new Set([...phrases, ...tokens])).filter(Boolean);
+  if (!parts.length) return null;
+
+  const fields = ["name.ar", "name.he", "description.ar", "description.he"];
+  const clauses = parts.map((part) => {
+    const escaped = escapeRegex(part).replace(/\s+/g, "\\s+");
+    return {
+      $or: fields.map((field) => ({
+        [field]: { $regex: escaped, $options: "i" },
+      })),
+    };
+  });
+
+  if (clauses.length === 1) return clauses[0];
+  return { $and: clauses };
 }
 
 /** توحيد اسم وداتا المنتج قبل الإنشاء */
@@ -159,6 +191,7 @@ const ProductsController = {
         q,
         maxPrice,
         sort = "new",
+        locale,
       } = req.query;
 
       // فلترة المُلصقات المطلوبة (tags) من كويري
@@ -176,13 +209,14 @@ const ProductsController = {
       const $match = { ...ownershipFilter };
       if (mainCategory) $match.mainCategory = String(mainCategory);
       if (subCategory) $match.subCategory = String(subCategory);
-      if (q) $match.$text = { $search: String(q) };
+      const searchMatch = buildSearchMatch(q);
+      if (searchMatch) Object.assign($match, searchMatch);
 
       // صفحة وحدّ
       const { pageNum, limitNum, skip } = parsePagination(req.query);
 
       // ترتيب
-      const $sortStage = resolveSort(sort);
+      const $sortStage = resolveSort(sort, locale);
 
       // لحساب الخصومات المفعلة الآن
       const now = new Date();
@@ -386,7 +420,14 @@ const ProductsController = {
         },
       ];
 
-      const [result] = await Product.aggregate(pipeline);
+      const agg = Product.aggregate(pipeline);
+      if (sort === "nameAsc" || sort === "nameDesc") {
+        agg.collation({
+          locale: locale === "he" ? "he" : "ar",
+          strength: 2,
+        });
+      }
+      const [result] = await agg;
       const total = result?.total || 0;
       const items = formatProducts(result?.items || []);
       const totalPages = Math.ceil(total / limitNum);
@@ -421,7 +462,8 @@ const ProductsController = {
       const $match = { ...ownershipFilter };
       if (mainCategory) $match.mainCategory = String(mainCategory);
       if (subCategory) $match.subCategory = String(subCategory);
-      if (q) $match.$text = { $search: String(q) };
+      const searchMatch = buildSearchMatch(q);
+      if (searchMatch) Object.assign($match, searchMatch);
 
       const pipeline = [
         { $match },
@@ -493,6 +535,47 @@ const ProductsController = {
   },
 
   /* =========================
+   * READ suggestions (خفيف)
+   * ========================= */
+  async suggest(req, res) {
+    try {
+      const q = String(req.query.q || "").trim();
+      if (!q || q.length < 2) {
+        return res.json({ items: [] });
+      }
+
+      const limitNum = Math.max(
+        1,
+        Math.min(parseInt(req.query.limit, 10) || 8, 20)
+      );
+      const role = req.user?.role;
+      const canUseOwnership = role === "admin" || role === "dealer";
+      const ownershipFilter = readOwnershipFilterFromQuery(
+        req.query,
+        canUseOwnership
+      );
+
+      const searchMatch = buildSearchMatch(q);
+      const filter = { ...ownershipFilter, ...(searchMatch || {}) };
+
+      const items = await Product.find(filter, { name: 1 })
+        .sort({ priority: 1, createdAt: -1 })
+        .limit(limitNum)
+        .lean();
+
+      return res.json({
+        items: (items || []).map((p) => ({
+          _id: p._id,
+          name: mapLocalizedForResponse(p.name),
+        })),
+      });
+    } catch (err) {
+      console.error("suggest error:", err && err.stack ? err.stack : err);
+      return res.status(500).json({ error: "Server error in /suggest" });
+    }
+  },
+
+  /* =========================
    * READ all (يحترم priority)
    * ========================= */
   async list(req, res) {
@@ -509,7 +592,8 @@ const ProductsController = {
       const filter = { ...ownershipFilter };
       if (mainCategory) filter.mainCategory = String(mainCategory);
       if (subCategory) filter.subCategory = String(subCategory);
-      if (q) filter.$text = { $search: String(q) };
+      const searchMatch = buildSearchMatch(q);
+      if (searchMatch) Object.assign(filter, searchMatch);
 
       const { pageNum, limitNum, skip } = parsePagination({
         page: req.query.page || 1,
