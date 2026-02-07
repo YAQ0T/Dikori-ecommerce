@@ -38,6 +38,7 @@ type CategoryItem = {
   label: Localized;
   imageUrl: string;
   order?: number;
+  prevValue?: string;
 };
 
 type SubCategoryItem = {
@@ -46,6 +47,8 @@ type SubCategoryItem = {
   label: Localized;
   imageUrl: string;
   order?: number;
+  prevMain?: string;
+  prevValue?: string;
 };
 
 type SiteSettings = {
@@ -69,20 +72,36 @@ const createHeroState = (raw?: Partial<HeroState>): HeroState => ({
   secondaryCtaLabel: ensureLocalizedObject(raw?.secondaryCtaLabel),
 });
 
-const normalizeCategory = (raw?: Partial<CategoryItem>): CategoryItem => ({
-  value: raw?.value || "",
-  label: ensureLocalizedObject(raw?.label),
-  imageUrl: raw?.imageUrl || "",
-  order: typeof raw?.order === "number" ? raw?.order : 0,
-});
+const normalizeCategory = (raw?: Partial<CategoryItem>): CategoryItem => {
+  const value = raw?.value || "";
+  const prevValue =
+    typeof raw?.prevValue === "string" ? raw?.prevValue : value;
+  return {
+    value,
+    label: ensureLocalizedObject(raw?.label),
+    imageUrl: raw?.imageUrl || "",
+    order: typeof raw?.order === "number" ? raw?.order : 0,
+    prevValue,
+  };
+};
 
-const normalizeSubCategory = (raw?: Partial<SubCategoryItem>): SubCategoryItem => ({
-  main: raw?.main || "",
-  value: raw?.value || "",
-  label: ensureLocalizedObject(raw?.label),
-  imageUrl: raw?.imageUrl || "",
-  order: typeof raw?.order === "number" ? raw?.order : 0,
-});
+const normalizeSubCategory = (raw?: Partial<SubCategoryItem>): SubCategoryItem => {
+  const main = raw?.main || "";
+  const value = raw?.value || "";
+  const prevMain =
+    typeof raw?.prevMain === "string" ? raw?.prevMain : main;
+  const prevValue =
+    typeof raw?.prevValue === "string" ? raw?.prevValue : value;
+  return {
+    main,
+    value,
+    label: ensureLocalizedObject(raw?.label),
+    imageUrl: raw?.imageUrl || "",
+    order: typeof raw?.order === "number" ? raw?.order : 0,
+    prevMain,
+    prevValue,
+  };
+};
 
 const emptyHero = createHeroState({});
 
@@ -91,6 +110,7 @@ const createEmptyCategory = (): CategoryItem => ({
   label: { ...emptyLocalized },
   imageUrl: "",
   order: 0,
+  prevValue: "",
 });
 
 const createEmptySubCategory = (): SubCategoryItem => ({
@@ -99,6 +119,8 @@ const createEmptySubCategory = (): SubCategoryItem => ({
   label: { ...emptyLocalized },
   imageUrl: "",
   order: 0,
+  prevMain: "",
+  prevValue: "",
 });
 
 const slugifyLabel = (value: string) =>
@@ -328,21 +350,27 @@ const SiteSettingsEditor: React.FC<{
           ? data.homeCategories.map((item) => normalizeCategory(item))
           : [];
         setHomeCategories(
-          !hasSeeded && homeCats.length === 0 ? defaultHomeCategories : homeCats
+          !hasSeeded && homeCats.length === 0
+            ? defaultHomeCategories.map((item) => normalizeCategory(item))
+            : homeCats
         );
 
         const mainCats = Array.isArray(data.categoryMenu?.main)
           ? data.categoryMenu.main.map((item) => normalizeCategory(item))
           : [];
         setMenuMain(
-          !hasSeeded && mainCats.length === 0 ? menuDefaults.main : mainCats
+          !hasSeeded && mainCats.length === 0
+            ? menuDefaults.main.map((item) => normalizeCategory(item))
+            : mainCats
         );
 
         const subCats = Array.isArray(data.categoryMenu?.sub)
           ? data.categoryMenu.sub.map((item) => normalizeSubCategory(item))
           : [];
         setMenuSub(
-          !hasSeeded && subCats.length === 0 ? menuDefaults.sub : subCats
+          !hasSeeded && subCats.length === 0
+            ? menuDefaults.sub.map((item) => normalizeSubCategory(item))
+            : subCats
         );
       })
       .catch((err) => {
@@ -363,17 +391,19 @@ const SiteSettingsEditor: React.FC<{
   useEffect(() => {
     if (seeded) return;
     if (!homeCategories.length && defaultHomeCategories.length) {
-      setHomeCategories(defaultHomeCategories);
+      setHomeCategories(
+        defaultHomeCategories.map((item) => normalizeCategory(item))
+      );
     }
   }, [seeded, homeCategories.length, defaultHomeCategories]);
 
   useEffect(() => {
     if (seeded) return;
     if (!menuMain.length && menuDefaults.main.length) {
-      setMenuMain(menuDefaults.main);
+      setMenuMain(menuDefaults.main.map((item) => normalizeCategory(item)));
     }
     if (!menuSub.length && menuDefaults.sub.length) {
-      setMenuSub(menuDefaults.sub);
+      setMenuSub(menuDefaults.sub.map((item) => normalizeSubCategory(item)));
     }
   }, [seeded, menuMain.length, menuSub.length, menuDefaults]);
 
@@ -489,6 +519,8 @@ const SiteSettingsEditor: React.FC<{
           ...item,
           value: item.value.trim(),
           imageUrl: item.imageUrl.trim(),
+          prevValue:
+            typeof item.prevValue === "string" ? item.prevValue.trim() : "",
         }))
         .filter((item) => item.value);
 
@@ -499,6 +531,10 @@ const SiteSettingsEditor: React.FC<{
           main: item.main.trim(),
           value: item.value.trim(),
           imageUrl: item.imageUrl.trim(),
+          prevMain:
+            typeof item.prevMain === "string" ? item.prevMain.trim() : "",
+          prevValue:
+            typeof item.prevValue === "string" ? item.prevValue.trim() : "",
         }))
         .filter((item) => item.main && item.value);
 
@@ -513,6 +549,24 @@ const SiteSettingsEditor: React.FC<{
 
     try {
       await api.put("/site-settings", payload, { headers });
+      setMenuMain((prev) =>
+        prev.map((item) => ({
+          ...item,
+          value: item.value.trim(),
+          imageUrl: item.imageUrl.trim(),
+          prevValue: item.value.trim(),
+        }))
+      );
+      setMenuSub((prev) =>
+        prev.map((item) => ({
+          ...item,
+          main: item.main.trim(),
+          value: item.value.trim(),
+          imageUrl: item.imageUrl.trim(),
+          prevMain: item.main.trim(),
+          prevValue: item.value.trim(),
+        }))
+      );
       setSuccess("تم حفظ إعدادات الموقع بنجاح ✅");
     } catch (err) {
       console.error("Failed to save site settings", err);

@@ -3,6 +3,7 @@ import { BrowserRouter } from "react-router-dom";
 import { CartProvider } from "@/context/CartContext";
 import { FavoritesProvider } from "@/context/FavoritesContext";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { Analytics } from "@vercel/analytics/react";
 import { I18nextProvider } from "react-i18next";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -31,6 +32,7 @@ createRoot(document.getElementById("root")!).render(
             <CartProvider>
               <BrowserRouter>
                 <SpeedInsights />
+                <Analytics />
                 <App />
               </BrowserRouter>
             </CartProvider>
