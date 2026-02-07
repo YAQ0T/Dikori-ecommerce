@@ -826,7 +826,7 @@ const Products: React.FC = () => {
                 <button
                   type="button"
                   className="h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                  onClick={triggerSearch}
+                  onClick={() => triggerSearch()}
                   title={t("productsPage.filters.searchButtonTitle")}
                 >
                   {t("productsPage.filters.searchButtonTitle")}
