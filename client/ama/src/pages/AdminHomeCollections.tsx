@@ -60,7 +60,9 @@ export default function AdminHomeCollections() {
     (async () => {
       try {
         setLoading(true);
-        const { data } = await api.get("/home-collections", { headers });
+        const { data } = await api.get("/home-collections?includeHidden=1", {
+          headers,
+        });
 
         if (!live) return;
 
@@ -101,6 +103,7 @@ export default function AdminHomeCollections() {
         const params = new URLSearchParams();
         params.set("page", "1");
         params.set("limit", "12");
+        params.set("includeHidden", "1");
         params.set("q", query.trim());
         const url = `/products/with-stats?${params.toString()}`;
         const { data } = await api.get(url, { headers });

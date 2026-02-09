@@ -4,6 +4,7 @@ const express = require("express");
 const Product = require("../models/Product");
 const Variant = require("../models/Variant");
 const { mapLocalizedForResponse } = require("../utils/localized");
+const { verifyTokenOptional } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ function isDiscountActive(discount = {}) {
  * - يسترجع المنتجات التي تم تحديثها (product أو variant) خلال X أيام
  * - يدعم: mainCategory, subCategory, q, ownership, tags, page, limit, days
  */
-router.get("/recent-updates", async (req, res) => {
+router.get("/recent-updates", verifyTokenOptional, async (req, res) => {
   try {
     const {
       page = 1,
@@ -48,6 +49,10 @@ router.get("/recent-updates", async (req, res) => {
         { createdAt: { $gte: sinceDate } },
       ],
     };
+    const canViewHidden = req.user?.role === "admin" || req.user?.role === "dealer";
+    if (!canViewHidden) {
+      productMatch.isVisible = { $ne: false };
+    }
     if (q) {
       productMatch.$text = { $search: String(q) };
     }

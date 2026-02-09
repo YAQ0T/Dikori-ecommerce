@@ -25,6 +25,7 @@ type Variant = {
   color: { name: string; code?: string; images?: string[] };
   price: Price;
   stock: { inStock: number; sku: string };
+  trackQuantity?: boolean;
   tags?: string[];
   finalAmount?: number;
   isDiscountActive?: boolean;
@@ -45,6 +46,7 @@ const emptyForm = (productId: string): Variant => ({
   color: { name: "", code: "", images: [] },
   price: { amount: 0, compareAt: undefined, currency: "USD" },
   stock: { inStock: 0, sku: "" },
+  trackQuantity: false,
   tags: [],
 });
 
@@ -198,6 +200,7 @@ const VariantManagerDialog: React.FC<Props> = ({
         discount: v.price?.discount,
       },
       stock: { inStock: v.stock?.inStock || 0, sku: v.stock?.sku || "" },
+      trackQuantity: v.trackQuantity === true,
       tags: v.tags || [],
       _id: v._id,
     });
@@ -244,6 +247,29 @@ const VariantManagerDialog: React.FC<Props> = ({
       onChanged?.();
     } catch (e: any) {
       alert(e?.response?.data?.message || e?.message || "فشل حذف المتغيّر");
+    }
+  };
+
+  const toggleTrackQuantity = async (variant: Variant) => {
+    if (!variant?._id) return;
+    const next = variant.trackQuantity !== true;
+    try {
+      const { data } = await api.put(
+        `/variants/${variant._id}`,
+        { trackQuantity: next },
+        { headers }
+      );
+      setVariants((prev) =>
+        prev.map((x) => (x._id === variant._id ? data : x))
+      );
+      if (isEditingId === variant._id) {
+        setForm((prev) => ({ ...prev, trackQuantity: next }));
+      }
+      onChanged?.();
+    } catch (e: any) {
+      alert(
+        e?.response?.data?.message || e?.message || "فشل تحديث حالة الكمية"
+      );
     }
   };
 
@@ -349,12 +375,24 @@ const VariantManagerDialog: React.FC<Props> = ({
                         </span>
                       ) : null}
                       {" · "}
-                      المخزون: {v.stock?.inStock} {" · "}
+                      {v.trackQuantity === true
+                        ? `المخزون: ${v.stock?.inStock}`
+                        : "الكمية: غير مفعلة (لا نهائي)"}{" "}
+                      {" · "}
                       SKU: {v.stock?.sku}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toggleTrackQuantity(v)}
+                    >
+                      {v.trackQuantity === true
+                        ? "إلغاء تفعيل الكمية"
+                        : "تفعيل الكمية"}
+                    </Button>
                     <Button size="sm" onClick={() => startEdit(v)}>
                       تعديل
                     </Button>
@@ -478,6 +516,7 @@ const VariantManagerDialog: React.FC<Props> = ({
                 type="number"
                 placeholder="المخزون"
                 value={form.stock.inStock}
+                disabled={form.trackQuantity !== true}
                 onChange={(e) =>
                   setForm({
                     ...form,
@@ -498,6 +537,27 @@ const VariantManagerDialog: React.FC<Props> = ({
                   })
                 }
               />
+            </div>
+
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">تفعيل الكمية</label>
+              <Button
+                type="button"
+                variant={form.trackQuantity === true ? "default" : "outline"}
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    trackQuantity: prev.trackQuantity === true ? false : true,
+                  }))
+                }
+              >
+                {form.trackQuantity === true
+                  ? "مفعّل: يعتمد على المخزون"
+                  : "غير مفعّل: مخزون لا نهائي"}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                عند تعطيله، يمكن الشراء حتى لو كانت الكمية 0.
+              </p>
             </div>
 
             <div>

@@ -35,6 +35,7 @@ const CartContext = createContext<CartContextType | null>(null);
 
 // مفتاح التخزين المحلي
 const STORAGE_KEY = "madina_cart_v1";
+const MAX_ORDER_QTY = 999999;
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
   // ✅ تحميل أولي من localStorage (Lazy initializer)
@@ -77,7 +78,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   const addToCart = (product: Product, quantity = 1) => {
     setCart((prev) => {
-      const clampedQuantity = Math.max(1, quantity);
+      const clampedQuantity = Math.max(
+        1,
+        Math.min(MAX_ORDER_QTY, quantity)
+      );
       const existing = prev.find(
         (item) =>
           item._id === product._id &&
@@ -90,7 +94,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           item._id === product._id &&
           item.selectedColor === product.selectedColor &&
           item.selectedMeasure === product.selectedMeasure
-            ? { ...item, quantity: item.quantity + clampedQuantity }
+            ? {
+                ...item,
+                quantity: Math.min(
+                  MAX_ORDER_QTY,
+                  item.quantity + clampedQuantity
+                ),
+              }
             : item
         );
       }
@@ -149,7 +159,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         item._id === productId &&
         item.selectedColor === selectedColor &&
         item.selectedMeasure === selectedMeasure
-          ? { ...item, quantity }
+          ? {
+              ...item,
+              quantity: Math.max(1, Math.min(MAX_ORDER_QTY, quantity)),
+            }
           : item
       );
     });

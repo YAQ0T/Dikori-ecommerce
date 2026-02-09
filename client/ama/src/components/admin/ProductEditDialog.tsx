@@ -98,6 +98,7 @@ const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
           ? editingProduct.images
           : [],
         ownershipType, // 👈 إرسال نوع الملكية
+        isVisible: editingProduct.isVisible !== false,
       };
 
       if (sanitizedDescription.ar || sanitizedDescription.he) {
@@ -246,6 +247,25 @@ const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
           </select>
           <p className="text-xs text-muted-foreground">
             {t("admin.productEdit.helpers.ownership")}
+          </p>
+        </div>
+
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">حالة الظهور</label>
+          <Button
+            type="button"
+            variant={editingProduct.isVisible === false ? "outline" : "default"}
+            onClick={() =>
+              setEditingProduct({
+                ...editingProduct,
+                isVisible: editingProduct.isVisible === false ? true : false,
+              })
+            }
+          >
+            {editingProduct.isVisible === false ? "مخفي" : "ظاهر"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            المنتج المخفي لا يظهر للزوار في الموقع.
           </p>
         </div>
 

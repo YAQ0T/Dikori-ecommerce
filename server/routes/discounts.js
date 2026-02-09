@@ -117,7 +117,15 @@ router.post("/apply", validateBody(applyDiscountSchema), async (req, res) => {
         });
       }
 
-      const product = await Product.findById(productId).lean();
+      const product = await Product.findById(productId, {
+        name: 1,
+        isVisible: 1,
+      }).lean();
+      if (product && product.isVisible === false) {
+        return res.status(409).json({
+          message: `المنتج غير متاح حاليًا للعنصر رقم ${i + 1}`,
+        });
+      }
       cleanItems.push({
         productId: variant.product,
         variantId: variant._id,

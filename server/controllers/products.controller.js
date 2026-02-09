@@ -74,6 +74,33 @@ function buildSearchMatch(q) {
   return { $and: clauses };
 }
 
+function parseBooleanInput(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1 ? true : value === 0 ? false : null;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off"].includes(normalized)) return false;
+  }
+  return null;
+}
+
+function canViewHiddenProducts(role) {
+  return role === "admin" || role === "dealer";
+}
+
+function shouldIncludeHidden(req) {
+  const requested = parseBooleanInput(req?.query?.includeHidden);
+  if (requested !== true) return false;
+  return canViewHiddenProducts(req?.user?.role);
+}
+
+function applyVisibilityFilter(target, includeHidden = false) {
+  if (!includeHidden) {
+    target.isVisible = { $ne: false };
+  }
+}
+
 /** توحيد اسم وداتا المنتج قبل الإنشاء */
 function prepareCreateData(body) {
   const {
@@ -85,6 +112,7 @@ function prepareCreateData(body) {
     images,
     ownershipType,
     priority,
+    isVisible,
   } = body;
 
   const nameResult = parseLocalizedInput(name, {
@@ -145,6 +173,14 @@ function prepareCreateData(body) {
     data.priority = pv;
   }
 
+  if (typeof isVisible !== "undefined") {
+    const parsedVisibility = parseBooleanInput(isVisible);
+    if (parsedVisibility === null) {
+      return { error: "قيمة isVisible غير صحيحة: true | false" };
+    }
+    data.isVisible = parsedVisibility;
+  }
+
   return { data };
 }
 
@@ -200,6 +236,7 @@ const ProductsController = {
       // صلاحية رؤية المِلكية
       const role = req.user?.role;
       const canUseOwnership = role === "admin" || role === "dealer";
+      const includeHidden = shouldIncludeHidden(req);
       const ownershipFilter = readOwnershipFilterFromQuery(
         req.query,
         canUseOwnership
@@ -207,6 +244,7 @@ const ProductsController = {
 
       // فلاتر البحث الأساسية
       const $match = { ...ownershipFilter };
+      applyVisibilityFilter($match, includeHidden);
       if (mainCategory) $match.mainCategory = String(mainCategory);
       if (subCategory) $match.subCategory = String(subCategory);
       const searchMatch = buildSearchMatch(q);
@@ -405,6 +443,7 @@ const ProductsController = {
                   totalStock: 1,
                   ownershipType: 1,
                   priority: 1,
+                  isVisible: 1,
                 },
               },
             ],
@@ -454,12 +493,14 @@ const ProductsController = {
 
       const role = req.user?.role;
       const canUseOwnership = role === "admin" || role === "dealer";
+      const includeHidden = shouldIncludeHidden(req);
       const ownershipFilter = readOwnershipFilterFromQuery(
         req.query,
         canUseOwnership
       );
 
       const $match = { ...ownershipFilter };
+      applyVisibilityFilter($match, includeHidden);
       if (mainCategory) $match.mainCategory = String(mainCategory);
       if (subCategory) $match.subCategory = String(subCategory);
       const searchMatch = buildSearchMatch(q);
@@ -550,6 +591,7 @@ const ProductsController = {
       );
       const role = req.user?.role;
       const canUseOwnership = role === "admin" || role === "dealer";
+      const includeHidden = shouldIncludeHidden(req);
       const ownershipFilter = readOwnershipFilterFromQuery(
         req.query,
         canUseOwnership
@@ -557,6 +599,7 @@ const ProductsController = {
 
       const searchMatch = buildSearchMatch(q);
       const filter = { ...ownershipFilter, ...(searchMatch || {}) };
+      applyVisibilityFilter(filter, includeHidden);
 
       const items = await Product.find(filter, { name: 1 })
         .sort({ priority: 1, createdAt: -1 })
@@ -584,12 +627,14 @@ const ProductsController = {
 
       const role = req.user?.role;
       const canUseOwnership = role === "admin" || role === "dealer";
+      const includeHidden = shouldIncludeHidden(req);
       const ownershipFilter = readOwnershipFilterFromQuery(
         req.query,
         canUseOwnership
       );
 
       const filter = { ...ownershipFilter };
+      applyVisibilityFilter(filter, includeHidden);
       if (mainCategory) filter.mainCategory = String(mainCategory);
       if (subCategory) filter.subCategory = String(subCategory);
       const searchMatch = buildSearchMatch(q);
@@ -619,6 +664,7 @@ const ProductsController = {
     try {
       const withVariants = req.query.withVariants === "1";
       const { id } = req.params;
+      const includeHidden = shouldIncludeHidden(req);
 
       if (!mongoose.isValidObjectId(id)) {
         return res.status(400).json({ error: "معرّف غير صالح" });
@@ -627,6 +673,9 @@ const ProductsController = {
       const product = await Product.findById(id).lean();
       if (!product)
         return res.status(404).json({ message: "المنتج غير موجود" });
+      if (!includeHidden && product.isVisible === false) {
+        return res.status(404).json({ message: "المنتج غير موجود" });
+      }
 
       const normalizedProduct = formatProduct(product);
 
@@ -659,6 +708,7 @@ const ProductsController = {
         images,
         ownershipType,
         priority,
+        isVisible,
       } = req.body;
 
       const updateData = {};
@@ -718,6 +768,16 @@ const ProductsController = {
           return res.status(400).json({ error: "قيمة priority: A | B | C" });
         }
         updateData.priority = pv;
+      }
+
+      if (typeof isVisible !== "undefined") {
+        const parsedVisibility = parseBooleanInput(isVisible);
+        if (parsedVisibility === null) {
+          return res
+            .status(400)
+            .json({ error: "قيمة isVisible غير صحيحة: true | false" });
+        }
+        updateData.isVisible = parsedVisibility;
       }
 
       const updated = await Product.findByIdAndUpdate(id, updateData, {

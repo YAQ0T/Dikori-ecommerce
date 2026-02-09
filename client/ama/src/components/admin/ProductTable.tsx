@@ -21,6 +21,8 @@ const badgeBase =
   "inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-medium";
 const badgeOurs = `${badgeBase} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300`;
 const badgeLocal = `${badgeBase} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300`;
+const badgeVisible = `${badgeBase} bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300`;
+const badgeHidden = `${badgeBase} bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-300`;
 
 // شارة بسيطة لعرض الأولوية
 function PriorityBadge({ value }: { value?: string }) {
@@ -54,6 +56,15 @@ function OwnershipBadge({ value }: { value?: string }) {
   return (
     <span className={badgeOurs} title={t("admin.common.ownership.ours")}>
       {t("admin.common.ownership.ours")}
+    </span>
+  );
+}
+
+function VisibilityBadge({ value }: { value?: boolean }) {
+  const isVisible = value !== false;
+  return (
+    <span className={isVisible ? badgeVisible : badgeHidden}>
+      {isVisible ? "ظاهر" : "مخفي"}
     </span>
   );
 }
@@ -112,6 +123,27 @@ const ProductTable: React.FC<ProductTableProps> = ({
       console.error("❌ Error updating priority", err);
       alert(t("admin.productTable.alerts.priorityFailed"));
       // في حالة الخطأ، يُفضّل إعادة الجلب إن كان متاحًا
+      if (onRefreshProducts) onRefreshProducts();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleVisibilityToggle = async (productId: string, current?: boolean) => {
+    const nextVisible = current === false;
+    setProductsState((prev) =>
+      prev.map((p) => (p._id === productId ? { ...p, isVisible: nextVisible } : p))
+    );
+    setSavingId(productId);
+    try {
+      await api.put(
+        `/products/${productId}`,
+        { isVisible: nextVisible },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (err) {
+      console.error("❌ Error updating visibility", err);
+      alert("فشل تحديث حالة الظهور");
       if (onRefreshProducts) onRefreshProducts();
     } finally {
       setSavingId(null);
@@ -179,6 +211,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
             <th className="border px-4 py-2">
               {t("admin.productTable.headers.subCategory")}
             </th>
+            <th className="border px-4 py-2">الظهور</th>
             <th className="border px-4 py-2">
               {t("admin.productTable.headers.actions")}
             </th>
@@ -258,7 +291,20 @@ const ProductTable: React.FC<ProductTableProps> = ({
                   {product.subCategory}
                 </td>
                 <td className="border px-4 py-2 align-top">
+                  <VisibilityBadge value={product.isVisible} />
+                </td>
+                <td className="border px-4 py-2 align-top">
                   <div className="flex flex-wrap gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={savingId === product._id}
+                      onClick={() =>
+                        handleVisibilityToggle(product._id, product.isVisible)
+                      }
+                    >
+                      {product.isVisible === false ? "إظهار" : "إخفاء"}
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -291,7 +337,7 @@ const ProductTable: React.FC<ProductTableProps> = ({
           {list.length === 0 && (
             <tr>
               <td
-                colSpan={9}
+                colSpan={10}
                 className="border px-4 py-6 text-center text-gray-500"
               >
                 {t("admin.productTable.empty")}

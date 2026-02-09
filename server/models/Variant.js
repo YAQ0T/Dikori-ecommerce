@@ -50,6 +50,8 @@ const VariantSchema = new Schema(
         index: true,
       },
     },
+    // false = الكمية غير مقيّدة (مخزون لا نهائي)
+    trackQuantity: { type: Boolean, default: false },
 
     // وسوم مرنة (dimension:value)
     tags: { type: [String], default: [], index: true },

@@ -45,6 +45,7 @@ const variantSchema = z
         sku: z.string().optional(),
       })
       .optional(),
+    trackQuantity: z.boolean().optional(),
     tags: z.array(z.string()).optional(),
   })
   .passthrough();
@@ -178,6 +179,7 @@ router.get("/", verifyTokenOptional, async (req, res) => {
         measureSlug: ms,
         colorSlug: cs,
         color,
+        trackQuantity: v.trackQuantity === true,
         tags: Array.from(tagSet),
         finalAmount,
         isDiscountActive: isActive,
@@ -318,6 +320,18 @@ router.post(
       return res.status(400).json({ error: "معرّف غير صالح" });
 
     const qty = Math.max(1, parseInt(req.body?.qty, 10) || 1);
+    const variant = await Variant.findById(id, {
+      trackQuantity: 1,
+      stock: 1,
+    }).lean();
+    if (!variant) {
+      return res.status(404).json({ error: "المتغيّر غير موجود" });
+    }
+
+    if (variant.trackQuantity !== true) {
+      return res.json({ ok: true, skipped: true, reason: "unlimited" });
+    }
+
     const upd = await Variant.updateOne(
       { _id: id, "stock.inStock": { $gte: qty } },
       { $inc: { "stock.inStock": -qty } }

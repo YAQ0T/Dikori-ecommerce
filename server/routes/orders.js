@@ -179,19 +179,156 @@ const toOid = (id) =>
   mongoose.isValidObjectId(id) ? new mongoose.Types.ObjectId(id) : null;
 const slugify = (s) =>
   (s || "").toString().trim().toLowerCase().replace(/\s+/g, "-");
+const canViewHiddenProducts = (role) => role === "admin" || role === "dealer";
 
 const toDisplayName = (raw) => {
   const normalized = ensureLocalizedObject(raw);
   return normalized.ar || normalized.he || "منتج";
 };
 
-function isOutOfStock(variantDoc) {
-  const qty = Number(
+function isQuantityTracked(variantDoc) {
+  return variantDoc?.trackQuantity === true;
+}
+
+function getVariantStock(variantDoc) {
+  return Number(
     variantDoc?.stock && typeof variantDoc.stock.inStock !== "undefined"
       ? variantDoc.stock.inStock
       : 0
   );
-  return !Number.isFinite(qty) || qty <= 0;
+}
+
+function hasEnoughStock(variantDoc, requestedQty) {
+  if (!isQuantityTracked(variantDoc)) return true;
+  const qty = getVariantStock(variantDoc);
+  return Number.isFinite(qty) && qty >= requestedQty;
+}
+
+function buildStockErrorPayload({ variantDoc, requestedQty, itemName }) {
+  const available = isQuantityTracked(variantDoc)
+    ? Math.max(0, getVariantStock(variantDoc))
+    : null;
+  const displayName = toDisplayName(itemName);
+
+  if (available === null) {
+    return {
+      message: `المتغيّر غير متوفر حاليًا لعنصر: ${displayName}`,
+      code: "OUT_OF_STOCK",
+    };
+  }
+
+  return {
+    message: `الكمية المطلوبة غير متوفرة لعنصر: ${displayName}. المتاح حاليًا: ${available}، المطلوب: ${requestedQty}`,
+    code: "INSUFFICIENT_STOCK",
+    details: {
+      available,
+      requested: requestedQty,
+      variantId: variantDoc?._id ? String(variantDoc._id) : null,
+      productId: variantDoc?.product ? String(variantDoc.product) : null,
+    },
+  };
+}
+
+function groupItemsByVariant(
+  items = [],
+  { onlyFlaggedTracked = false } = {}
+) {
+  const grouped = new Map();
+  for (const item of items || []) {
+    if (onlyFlaggedTracked && item?.trackQuantity !== true) continue;
+    const variantId = item?.variantId ? String(item.variantId) : "";
+    if (!variantId) continue;
+    const qty = Math.max(1, parseInt(item?.quantity, 10) || 0);
+    if (!qty) continue;
+    grouped.set(variantId, (grouped.get(variantId) || 0) + qty);
+  }
+  return grouped;
+}
+
+async function incrementTrackedStockByOrderItems(items = [], options = {}) {
+  const grouped = groupItemsByVariant(items, options);
+  if (!grouped.size) return;
+  await Promise.all(
+    Array.from(grouped.entries()).map(([variantId, qty]) => {
+      const oid = toOid(variantId);
+      if (!oid) return null;
+      return Variant.updateOne(
+        { _id: oid, trackQuantity: true },
+        { $inc: { "stock.inStock": qty } }
+      );
+    }).filter(Boolean)
+  );
+}
+
+async function decrementTrackedStockByOrderItems(items = [], options = {}) {
+  const grouped = groupItemsByVariant(items, options);
+  if (!grouped.size) return;
+
+  const applied = [];
+  try {
+    for (const [variantId, qty] of grouped.entries()) {
+      const oid = toOid(variantId);
+      if (!oid) continue;
+
+      const result = await Variant.updateOne(
+        {
+          _id: oid,
+          trackQuantity: true,
+          "stock.inStock": { $gte: qty },
+        },
+        { $inc: { "stock.inStock": -qty } }
+      );
+
+      if (result.modifiedCount > 0) {
+        applied.push({ variantId: oid, qty });
+        continue;
+      }
+
+      const current = await Variant.findById(oid, {
+        _id: 1,
+        product: 1,
+        trackQuantity: 1,
+        stock: 1,
+      }).lean();
+
+      if (!current) {
+        const err = new Error("المتغيّر غير موجود");
+        err.status = 404;
+        err.payload = {
+          message: "المتغيّر غير موجود",
+          code: "VARIANT_NOT_FOUND",
+          details: { variantId },
+        };
+        throw err;
+      }
+
+      if (current.trackQuantity !== true) {
+        continue;
+      }
+
+      const payload = buildStockErrorPayload({
+        variantDoc: current,
+        requestedQty: qty,
+        itemName: null,
+      });
+      const err = new Error(payload.message);
+      err.status = 409;
+      err.payload = payload;
+      throw err;
+    }
+  } catch (err) {
+    if (applied.length) {
+      await Promise.all(
+        applied.map((entry) =>
+          Variant.updateOne(
+            { _id: entry.variantId, trackQuantity: true },
+            { $inc: { "stock.inStock": entry.qty } }
+          )
+        )
+      );
+    }
+    throw err;
+  }
 }
 
 const resolveItemName = ({
@@ -369,6 +506,8 @@ router.post(
   verifyTokenOptional,
   validateBody(orderCreateSchema),
   async (req, res) => {
+  let stockDecremented = false;
+  let stockItemsForRollback = [];
   try {
     const recaptchaOk = await ensureRecaptcha(req, res);
     if (!recaptchaOk) return;
@@ -435,22 +574,39 @@ router.post(
         });
       }
 
-      if (isOutOfStock(variant)) {
-        return res.status(409).json({
-          message: `المتغيّر غير متوفر حاليًا لعنصر: ${toDisplayName(
-            it?.name
-          )}`,
-        });
+      if (!hasEnoughStock(variant, qty)) {
+        return res
+          .status(409)
+          .json(
+            buildStockErrorPayload({
+              variantDoc: variant,
+              requestedQty: qty,
+              itemName: it?.name,
+            })
+          );
       }
 
       const price = computeFinalAmount(variant.price || { amount: 0 });
 
       let productDoc = productCache.get(String(pid));
       if (!productDoc) {
-        productDoc = await Product.findById(pid, { name: 1, images: 1 }).lean();
+        productDoc = await Product.findById(pid, {
+          name: 1,
+          images: 1,
+          isVisible: 1,
+        }).lean();
         if (productDoc) {
           productCache.set(String(pid), productDoc);
         }
+      }
+      if (
+        productDoc &&
+        productDoc.isVisible === false &&
+        !canViewHiddenProducts(req.user?.role)
+      ) {
+        return res.status(409).json({
+          message: `المنتج غير متاح حاليًا: ${toDisplayName(it?.name)}`,
+        });
       }
 
       const localizedName = resolveItemName({
@@ -474,6 +630,7 @@ router.post(
         variantId: variant._id,
         name: localizedName,
         quantity: qty,
+        trackQuantity: variant.trackQuantity === true,
         price,
         color: isNonEmpty(it?.color) ? String(it.color).trim() : undefined,
         measure: isNonEmpty(it?.measure)
@@ -496,6 +653,12 @@ router.post(
       cleanItems,
       incomingDiscount
     );
+
+    await decrementTrackedStockByOrderItems(cleanItems, {
+      onlyFlaggedTracked: true,
+    });
+    stockDecremented = true;
+    stockItemsForRollback = cleanItems;
 
     const doc = await Order.create({
       user: userObj,
@@ -522,6 +685,8 @@ router.post(
       reference: null,
       notes: isNonEmpty(notes) ? String(notes).trim() : "",
     });
+    stockDecremented = false;
+    stockItemsForRollback = [];
 
     queueOrderSummarySMS({
       order: doc,
@@ -530,6 +695,18 @@ router.post(
 
     return res.status(201).json(doc);
   } catch (err) {
+    if (stockDecremented) {
+      try {
+        await incrementTrackedStockByOrderItems(stockItemsForRollback, {
+          onlyFlaggedTracked: true,
+        });
+      } catch (rollbackErr) {
+        console.error("POST /api/orders rollback stock error:", rollbackErr);
+      }
+    }
+    if (err?.status && err?.payload) {
+      return res.status(err.status).json(err.payload);
+    }
     console.error("POST /api/orders error:", err);
     return res.status(500).json({ message: "فشل إنشاء طلب COD" });
   }
@@ -613,22 +790,39 @@ router.post(
           });
       }
 
-      if (isOutOfStock(variant)) {
-        return res.status(409).json({
-          message: `المتغيّر غير متوفر حاليًا لعنصر: ${toDisplayName(
-            it?.name
-          )}`,
-        });
+      if (!hasEnoughStock(variant, qty)) {
+        return res
+          .status(409)
+          .json(
+            buildStockErrorPayload({
+              variantDoc: variant,
+              requestedQty: qty,
+              itemName: it?.name,
+            })
+          );
       }
 
       const price = computeFinalAmount(variant.price || { amount: 0 });
 
       let productDoc = productCache.get(String(pid));
       if (!productDoc) {
-        productDoc = await Product.findById(pid, { name: 1, images: 1 }).lean();
+        productDoc = await Product.findById(pid, {
+          name: 1,
+          images: 1,
+          isVisible: 1,
+        }).lean();
         if (productDoc) {
           productCache.set(String(pid), productDoc);
         }
+      }
+      if (
+        productDoc &&
+        productDoc.isVisible === false &&
+        !canViewHiddenProducts(req.user?.role)
+      ) {
+        return res.status(409).json({
+          message: `المنتج غير متاح حاليًا: ${toDisplayName(it?.name)}`,
+        });
       }
 
       const localizedName = resolveItemName({
@@ -843,6 +1037,8 @@ router.patch(
         updateSet.paymentCardLast4 = cardDetails.last4;
       }
 
+      await decrementTrackedStockByOrderItems(order.items || []);
+
       const updated = await Order.findOneAndUpdate(
         { _id: order._id, paymentStatus: { $ne: "paid" } },
         { $set: updateSet },
@@ -850,6 +1046,11 @@ router.patch(
       ).lean();
 
       if (!updated) {
+        try {
+          await incrementTrackedStockByOrderItems(order.items || []);
+        } catch (rollbackErr) {
+          console.error("Admin pay rollback stock error:", rollbackErr);
+        }
         await Order.updateOne({ _id: order._id }, { $set: updateSet });
         const existing = await Order.findOne({ _id: order._id }).lean();
         return res.json({ message: "الطلب مدفوع مسبقًا", order: existing });
@@ -864,6 +1065,9 @@ router.patch(
       return res.json(updated);
     } catch (err) {
       console.error("Error marking order paid:", err);
+      if (err?.status && err?.payload) {
+        return res.status(err.status).json(err.payload);
+      }
       res.status(500).json({ message: "فشل وسم الطلب مدفوع" });
     }
   }

@@ -7,6 +7,7 @@ const HomeCollections = require("../models/HomeCollections");
 const Product = require("../models/Product");
 const {
   verifyToken,
+  verifyTokenOptional,
   isAdmin /* أو isAdmin فقط */,
 } = require("../middleware/authMiddleware");
 const { validateBody, z } = require("../utils/validate");
@@ -87,14 +88,48 @@ router.put(
   }
 );
 
+const canViewHiddenProducts = (role) => role === "admin" || role === "dealer";
+const visibleProductMatch = { isVisible: { $ne: false } };
+const parseBooleanInput = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1 ? true : value === 0 ? false : null;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off"].includes(normalized)) return false;
+  }
+  return null;
+};
+const shouldIncludeHidden = (req) => {
+  const requested = parseBooleanInput(req?.query?.includeHidden);
+  if (requested !== true) return false;
+  return canViewHiddenProducts(req?.user?.role);
+};
+
 // ====== Get: كلا القائمتين ======
-router.get("/", async (_req, res) => {
+router.get("/", verifyTokenOptional, async (req, res) => {
   try {
+    const allowHidden = shouldIncludeHidden(req);
     const doc = await HomeCollections.findOne({})
-      .populate("recommended")
-      .populate("newArrivals")
+      .populate({
+        path: "recommended",
+        ...(allowHidden ? {} : { match: visibleProductMatch }),
+      })
+      .populate({
+        path: "newArrivals",
+        ...(allowHidden ? {} : { match: visibleProductMatch }),
+      })
       .lean();
-    return res.json(doc || { recommended: [], newArrivals: [] });
+    if (!doc) return res.json({ recommended: [], newArrivals: [] });
+    return res.json({
+      ...doc,
+      recommended: Array.isArray(doc.recommended)
+        ? doc.recommended.filter(Boolean)
+        : [],
+      newArrivals: Array.isArray(doc.newArrivals)
+        ? doc.newArrivals.filter(Boolean)
+        : [],
+    });
   } catch (err) {
     console.error("GET /api/home-collections error:", err);
     return res.status(500).json({ message: "خطأ في الخادم" });
@@ -102,15 +137,19 @@ router.get("/", async (_req, res) => {
 });
 
 // ====== Get: المقترحة فقط ======
-router.get("/recommended", async (_req, res) => {
+router.get("/recommended", verifyTokenOptional, async (req, res) => {
   try {
+    const allowHidden = shouldIncludeHidden(req);
     const doc = await HomeCollections.findOne({}).lean();
     if (!doc) return res.json([]);
     const populated = await HomeCollections.findById(doc._id)
-      .populate("recommended")
+      .populate({
+        path: "recommended",
+        ...(allowHidden ? {} : { match: visibleProductMatch }),
+      })
       .lean();
     const list = Array.isArray(populated?.recommended)
-      ? populated.recommended
+      ? populated.recommended.filter(Boolean)
       : [];
     return res.json(list);
   } catch (err) {
@@ -120,15 +159,19 @@ router.get("/recommended", async (_req, res) => {
 });
 
 // ====== Get: الجديد فقط ======
-router.get("/new", async (_req, res) => {
+router.get("/new", verifyTokenOptional, async (req, res) => {
   try {
+    const allowHidden = shouldIncludeHidden(req);
     const doc = await HomeCollections.findOne({}).lean();
     if (!doc) return res.json([]);
     const populated = await HomeCollections.findById(doc._id)
-      .populate("newArrivals")
+      .populate({
+        path: "newArrivals",
+        ...(allowHidden ? {} : { match: visibleProductMatch }),
+      })
       .lean();
     const list = Array.isArray(populated?.newArrivals)
-      ? populated.newArrivals
+      ? populated.newArrivals.filter(Boolean)
       : [];
     return res.json(list);
   } catch (err) {

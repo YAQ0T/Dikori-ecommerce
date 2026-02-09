@@ -35,12 +35,14 @@ type Variant = {
     };
   };
   stock: { inStock: number; sku: string };
+  trackQuantity?: boolean;
   tags: string[];
   // قد تأتي من السيرفر لكن لن نعتمد عليها:
   finalAmount?: number;
   isDiscountActive?: boolean;
   displayCompareAt?: number | null;
 };
+const MAX_ORDER_QTY = 999999;
 
 type TimeUnit = "days" | "hours" | "minutes" | "seconds";
 
@@ -417,12 +419,42 @@ const ProductDetails: React.FC = () => {
   const handleQuantityChange = (newQty: number) => {
     setQuantity((prev) => {
       const desired = Number.isFinite(newQty) ? newQty : prev;
-      return Math.max(1, desired);
+      const trackedStock =
+        currentVariant?.trackQuantity === true
+          ? Math.max(0, Number(currentVariant?.stock?.inStock || 0))
+          : null;
+      const maxQty =
+        trackedStock === null
+          ? MAX_ORDER_QTY
+          : Math.min(MAX_ORDER_QTY, trackedStock);
+      const ceiling = maxQty > 0 ? maxQty : 1;
+      return Math.max(1, Math.min(desired, ceiling));
     });
   };
 
-  const isQuantityValid = !!currentVariant && quantity >= 1;
-  const isCtaDisabled = !currentVariant || !isQuantityValid;
+  const trackedStock =
+    currentVariant?.trackQuantity === true
+      ? Math.max(0, Number(currentVariant?.stock?.inStock || 0))
+      : null;
+  const maxSelectableQuantity =
+    trackedStock === null
+      ? MAX_ORDER_QTY
+      : Math.min(MAX_ORDER_QTY, trackedStock);
+  const isOutOfStock =
+    currentVariant?.trackQuantity === true && maxSelectableQuantity <= 0;
+  const isQuantityValid =
+    !!currentVariant &&
+    quantity >= 1 &&
+    (trackedStock === null || quantity <= trackedStock);
+  const isCtaDisabled = !currentVariant || !isQuantityValid || isOutOfStock;
+
+  useEffect(() => {
+    if (!currentVariant) return;
+    if (maxSelectableQuantity <= 0) return;
+    if (quantity > maxSelectableQuantity) {
+      setQuantity(maxSelectableQuantity);
+    }
+  }, [currentVariant, maxSelectableQuantity, quantity]);
 
   /* التحميل */
   if (productQuery.isLoading) {
@@ -626,6 +658,15 @@ const ProductDetails: React.FC = () => {
                 <label className="text-sm font-medium">
                   {t("productDetails.quantityLabel")}
                 </label>
+                {currentVariant?.trackQuantity === true && (
+                  <p className="text-xs text-muted-foreground">
+                    {maxSelectableQuantity > 0
+                      ? locale === "he"
+                        ? `זמין: ${maxSelectableQuantity}`
+                        : `المتاح: ${maxSelectableQuantity}`
+                      : t("productCard.outOfStock")}
+                  </p>
+                )}
                 <QuantityInput
                   quantity={quantity}
                   onChange={handleQuantityChange}

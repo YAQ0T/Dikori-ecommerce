@@ -169,8 +169,6 @@ const {
   verifyLahzaTransaction,
 } = require("./utils/lahza");
 const { queueOrderSummarySMS } = require("./utils/orderSms");
-const DECREMENT_STOCK_ON_PAYMENT =
-  String(process.env.DECREMENT_STOCK_ON_PAYMENT || "0") === "1";
 
 function getClientIp(req) {
   const xff = req.headers["x-forwarded-for"];
@@ -188,11 +186,14 @@ function getClientIp(req) {
 }
 
 async function decrementStockByOrderItems(items = []) {
-  if (!DECREMENT_STOCK_ON_PAYMENT) return;
   await Promise.all(
     (items || []).map((ci) =>
       Variant.updateOne(
-        { _id: ci.variantId, "stock.inStock": { $gte: ci.quantity } },
+        {
+          _id: ci.variantId,
+          trackQuantity: true,
+          "stock.inStock": { $gte: ci.quantity },
+        },
         { $inc: { "stock.inStock": -ci.quantity } }
       )
     )

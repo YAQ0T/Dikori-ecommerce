@@ -49,6 +49,7 @@ type ProductItem = {
   totalStock?: number;
   price?: number;
   quantity?: number;
+  isVisible?: boolean;
   createdAt?: string;
 };
 
@@ -95,6 +96,7 @@ const AdminDashboard: React.FC = () => {
     images: [] as string[],
     ownershipType: "ours" as "ours" | "local",
     priority: "C" as "A" | "B" | "C",
+    isVisible: true,
   });
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -287,7 +289,11 @@ const AdminDashboard: React.FC = () => {
     if (!token) return;
     try {
       const base = "/products/with-stats";
-      const params: Record<string, string | number> = { page: 1, limit: 2000 };
+      const params: Record<string, string | number> = {
+        page: 1,
+        limit: 2000,
+        includeHidden: 1,
+      };
       if (ownershipFilter !== "all") params.ownership = ownershipFilter;
       const url = `${base}?${new URLSearchParams(
         Object.entries(params).map(([k, v]) => [k, String(v)])
@@ -302,6 +308,7 @@ const AdminDashboard: React.FC = () => {
         images: Array.isArray(p.images) ? p.images : [],
         price: typeof p.minPrice === "number" ? p.minPrice : 0,
         quantity: typeof p.totalStock === "number" ? p.totalStock : 0,
+        isVisible: p.isVisible !== false,
       }));
       setProductsState(mapped);
     } catch (err) {
@@ -480,7 +487,7 @@ const AdminDashboard: React.FC = () => {
     (async () => {
       try {
         setHcLoading(true);
-        const { data } = await api.get("/home-collections", {
+        const { data } = await api.get("/home-collections?includeHidden=1", {
           headers: apiHeaders,
         });
         if (!live) return;
@@ -523,6 +530,7 @@ const AdminDashboard: React.FC = () => {
         const params = new URLSearchParams();
         params.set("page", "1");
         params.set("limit", "12");
+        params.set("includeHidden", "1");
         params.set("q", query.trim());
         const url = `/products/with-stats?${params.toString()}`;
         const { data } = await api.get(url, { headers: apiHeaders });
@@ -914,6 +922,7 @@ const AdminDashboard: React.FC = () => {
                     ...product,
                     name: ensureLocalizedObject(product.name),
                     description: ensureLocalizedObject(product.description),
+                    isVisible: product.isVisible !== false,
                   });
                   setIsEditModalOpen(true);
                 }}

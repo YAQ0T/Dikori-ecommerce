@@ -57,6 +57,7 @@ type Variant = {
     };
   };
   stock: { inStock: number; sku: string };
+  trackQuantity?: boolean;
   tags?: string[];
   // قد تكون موجودة من السيرفر، لكن لن نعتمد عليها:
   finalAmount?: number;
@@ -72,6 +73,7 @@ const clamp = (n: number, min = 0, max = 100) =>
   Math.max(min, Math.min(max, n));
 
 const fallbackImg = "https://i.imgur.com/PU1aG4t.jpeg";
+const MAX_ORDER_QTY = 999999;
 
 /** ✅ يُرجع دائمًا مصفوفة المتغيّرات سواء كانت الاستجابة {items:[]} أو [] مباشرة */
 function normalizeVariantsResponse(data: any): Variant[] {
@@ -297,6 +299,16 @@ const ProductCard: React.FC<Props> = ({ product }) => {
       ) || null
     );
   }, [variants, selectedMeasure, selectedColor]);
+  const trackedStock =
+    currentVariant?.trackQuantity === true
+      ? Math.max(0, Number(currentVariant?.stock?.inStock || 0))
+      : null;
+  const maxSelectableQuantity =
+    trackedStock === null
+      ? MAX_ORDER_QTY
+      : Math.min(MAX_ORDER_QTY, trackedStock);
+  const isTrackedOutOfStock =
+    currentVariant?.trackQuantity === true && maxSelectableQuantity <= 0;
 
   const currentVariantId = currentVariant?._id ?? "no-variant";
 
@@ -335,6 +347,14 @@ const ProductCard: React.FC<Props> = ({ product }) => {
     setQuantity(1);
     setQuantityInput("1");
   }, [currentVariantId]);
+
+  useEffect(() => {
+    if (maxSelectableQuantity <= 0) return;
+    if (quantity > maxSelectableQuantity) {
+      setQuantity(maxSelectableQuantity);
+      setQuantityInput(String(maxSelectableQuantity));
+    }
+  }, [maxSelectableQuantity, quantity]);
 
   // --- السعر/الخصم (المصدر الموحّد) ---
   const { final, compare, discountActive, discountPercent, window: discountWindow } =
@@ -392,14 +412,19 @@ const ProductCard: React.FC<Props> = ({ product }) => {
 
   // كمية وإضافة للسلة
   const handleQuantityChange = useCallback((newQty: number) => {
-    const safeQty = Math.max(1, Math.min(Number.isFinite(newQty) ? newQty : 1, 999));
+    const ceiling = maxSelectableQuantity > 0 ? maxSelectableQuantity : 1;
+    const safeQty = Math.max(
+      1,
+      Math.min(Number.isFinite(newQty) ? newQty : 1, ceiling)
+    );
     setQuantity(safeQty);
     setQuantityInput(String(safeQty));
-  }, []);
+  }, [maxSelectableQuantity]);
 
   const canIncreaseQuantity = useMemo(() => {
-    return quantity < 999;
-  }, [quantity]);
+    if (maxSelectableQuantity <= 0) return false;
+    return quantity < maxSelectableQuantity;
+  }, [maxSelectableQuantity, quantity]);
 
   const canDecreaseQuantity = quantity > 1;
 
@@ -449,7 +474,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
       let added = false;
 
       if (variants.length > 0) {
-        if (!currentVariant) return false;
+        if (!currentVariant || isTrackedOutOfStock) return false;
 
         const computed = computeVariantPricing(currentVariant);
         const priceForCart =
@@ -501,6 +526,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
     quantity,
     variants.length,
     currentVariant,
+    isTrackedOutOfStock,
     addToCart,
     product,
     displayedImages,
@@ -508,7 +534,8 @@ const ProductCard: React.FC<Props> = ({ product }) => {
     selectedColor,
   ]);
 
-  const isVariantUnavailable = variants.length > 0 && !currentVariant;
+  const isVariantUnavailable =
+    variants.length > 0 && (!currentVariant || isTrackedOutOfStock);
 
   // سكيليتون
   if (vLoading) {
@@ -629,6 +656,15 @@ const ProductCard: React.FC<Props> = ({ product }) => {
           </button>
         </div>
       </div>
+      {currentVariant?.trackQuantity === true && (
+        <p className="text-xs text-right text-gray-500">
+          {maxSelectableQuantity > 0
+            ? locale === "he"
+              ? `זמין: ${maxSelectableQuantity}`
+              : `المتاح: ${maxSelectableQuantity}`
+            : t("productCard.outOfStock")}
+        </p>
+      )}
 
       <Button
         onClick={() => {

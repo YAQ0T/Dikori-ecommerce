@@ -120,6 +120,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
         images: Array.isArray(newProduct.images) ? newProduct.images : [],
         ownershipType,
         priority,
+        isVisible: newProduct.isVisible !== false,
       };
 
       if (sanitizedDescription.ar || sanitizedDescription.he) {
@@ -141,6 +142,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
             description: ensureLocalizedObject(res.data.description),
             price: 0,
             quantity: 0,
+            isVisible: res.data?.isVisible !== false,
           },
         ]);
       }
@@ -153,6 +155,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
         images: [],
         ownershipType,
         priority,
+        isVisible: true,
       });
     } catch (err) {
       console.error("❌ Error adding product", err);
@@ -279,6 +282,25 @@ const ProductForm: React.FC<ProductFormProps> = ({
           </select>
           <p className="text-xs text-muted-foreground">
             {t("admin.productForm.helpers.priority")}
+          </p>
+        </div>
+
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">حالة الظهور</label>
+          <Button
+            type="button"
+            variant={newProduct.isVisible === false ? "outline" : "default"}
+            onClick={() =>
+              setNewProduct((prev: any) => ({
+                ...prev,
+                isVisible: prev.isVisible === false ? true : false,
+              }))
+            }
+          >
+            {newProduct.isVisible === false ? "مخفي" : "ظاهر"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            المنتج المخفي لا يظهر للزوار في الموقع.
           </p>
         </div>
 

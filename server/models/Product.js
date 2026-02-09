@@ -38,6 +38,12 @@ const ProductSchema = new Schema(
       default: "C",
       index: true,
     },
+    // false = المنتج مخفي عن صفحات الزوار
+    isVisible: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
   },
   { timestamps: true }
 );
@@ -101,6 +107,7 @@ ProductSchema.index(
 
 // فهرس مفيد للفرز الافتراضي
 ProductSchema.index({ priority: 1, createdAt: -1 });
+ProductSchema.index({ isVisible: 1, priority: 1, createdAt: -1 });
 
 module.exports =
   mongoose.models.Product || mongoose.model("Product", ProductSchema);
