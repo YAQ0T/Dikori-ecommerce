@@ -1,8 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
 import PageLoader from "@/components/common/PageLoader";
-// import OfferDialog from "./components/common/OfferDialog";
-// import { useEffect, useState } from "react";
+import SiteAdPopup from "@/components/common/SiteAdPopup";
 
 const Home = lazy(() => import("@/pages/Home"));
 const Products = lazy(() => import("./pages/Products"));
@@ -27,15 +26,9 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 function App() {
-  // const [open, setOpen] = useState(false);
-
-  // useEffect(() => {
-  //   setOpen(true);
-  // }, []);
-
   return (
     <>
-      {/* <OfferDialog open={open} onClose={() => setOpen(false)} /> */}
+      <SiteAdPopup />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<Home />} />

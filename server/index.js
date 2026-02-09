@@ -405,6 +405,7 @@ app.use("/api/discount-rules", require("./routes/discountRules"));
 app.use("/api/discounts", require("./routes/discounts"));
 app.use("/api/home-collections", require("./routes/homeCollections"));
 app.use("/api/site-settings", require("./routes/siteSettings"));
+app.use("/api/site-ad", require("./routes/siteAd"));
 app.use("/api/recaptcha", require("./routes/recaptcha"));
 app.use("/api/payments", require("./routes/payments"));
 app.use("/api/orders", require("./routes/order-status"));

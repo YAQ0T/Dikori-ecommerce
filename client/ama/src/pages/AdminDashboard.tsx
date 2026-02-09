@@ -28,6 +28,7 @@ import OrderTable from "@/components/admin/OrderTable";
 import OrderDetailsDialog from "@/components/admin/OrderDetailsDialog";
 import DiscountRulesManager from "@/components/admin/DiscountRulesManager";
 import SiteSettingsEditor from "@/components/admin/SiteSettingsEditor";
+import SiteAdEditor from "@/components/admin/SiteAdEditor";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import {
   emptyLocalized,
@@ -630,6 +631,7 @@ const AdminDashboard: React.FC = () => {
             <TabsTrigger value="notifications">الإشعارات</TabsTrigger>
             <TabsTrigger value="discounts">خصومات الطلبات</TabsTrigger>
             <TabsTrigger value="site-settings">إعدادات الموقع</TabsTrigger>
+            <TabsTrigger value="site-ad">الإعلان المنبثق</TabsTrigger>
           </TabsList>
 
           {/* ======================= تبويب واجهة المتجر ======================= */}
@@ -1237,6 +1239,10 @@ const AdminDashboard: React.FC = () => {
               categoryMap={categoryMap}
               subCategoryImageDefaults={subCategoryImageDefaults}
             />
+          </TabsContent>
+
+          <TabsContent value="site-ad">
+            <SiteAdEditor token={token} />
           </TabsContent>
         </Tabs>
       </main>
