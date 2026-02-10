@@ -703,7 +703,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
       {/* ============ موبايل ============ */}
       <div
         className={clsx(
-          "relative surface-card p-2 text-right flex flex-col h-full md:hidden cursor-pointer transition-all duration-300",
+          "relative surface-card p-0 overflow-hidden text-right flex flex-col md:hidden cursor-pointer transition-all duration-300",
           isDetailsOpen && "ring-2 ring-black/10"
         )}
         onClick={() => {
@@ -714,20 +714,20 @@ const ProductCard: React.FC<Props> = ({ product }) => {
         {/* محتوى البطاقة */}
         <div
           className={clsx(
-            "flex h-full flex-col transform transition-all duration-300 ease-out",
+            "flex flex-col transform transition-all duration-300 ease-out",
             isDetailsOpen
               ? "blur-sm scale-[0.97] pointer-events-none"
               : "scale-100"
           )}
         >
-          <div className="relative w-full aspect-[4/5] mb-1.5 overflow-hidden rounded bg-white/80 dark:bg-gray-900/60">
+          <div className="relative w-full aspect-square overflow-hidden bg-white">
             {displayedImages.map((src, index) => (
               <img
                 key={`${src}-${index}`}
                 src={src}
                 alt={productName}
                 className={clsx(
-                  "absolute inset-0 w-full h-full object-contain transition-all duration-500",
+                  "absolute inset-0 w-full h-full object-cover transition-all duration-500",
                   {
                     "opacity-100 translate-x-0 z-10": index === currentImage,
                     "opacity-0 translate-x-full z-0": index > currentImage,
@@ -819,7 +819,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
             )}
           </div>
 
-          <div className="pr-0">
+          <div className="px-3 pb-3 pt-2">
             <div className="flex items-start justify-between gap-1.5">
               <span className="block text-sm font-medium mb-1 line-clamp-2">
                 {productName}
@@ -875,20 +875,20 @@ const ProductCard: React.FC<Props> = ({ product }) => {
       {/* ============ ديسكتوب ============ */}
       <div
         className={clsx(
-          "hidden md:flex group surface-card p-3 text-right relative flex-col justify-between h-full transition-all duration-300",
+          "hidden md:flex group surface-card p-0 overflow-hidden text-right relative flex-col transition-all duration-300",
           isDetailsOpen && "ring-2 ring-black/10"
         )}
       >
         <div
           className={clsx(
-            "flex h-full flex-col transform transition-all duration-300 ease-out",
+            "flex flex-col transform transition-all duration-300 ease-out",
             isDetailsOpen
               ? "blur-sm scale-[0.97] pointer-events-none"
               : "scale-100"
           )}
         >
           <div
-            className="relative w-full aspect-[4/5] mb-2 overflow-hidden rounded bg-white/80 dark:bg-gray-900/60 cursor-pointer"
+            className="relative w-full aspect-square overflow-hidden bg-white cursor-pointer"
             onClick={() => navigate(`/products/${product._id}`)}
             role="button"
             tabIndex={0}
@@ -905,7 +905,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
                 src={src}
                 alt={productName}
                 className={clsx(
-                  "absolute inset-0 w-full h-full object-contain transition-all duration-500 ",
+                  "absolute inset-0 w-full h-full object-cover transition-all duration-500 ",
                   {
                     "opacity-100 translate-x-0 z-10": index === currentImage,
                     "opacity-0 translate-x-full z-0": index > currentImage,
@@ -1005,146 +1005,148 @@ const ProductCard: React.FC<Props> = ({ product }) => {
             )}
           </div>
 
-          <h3 className="text-base font-medium mb-1">{productName}</h3>
+          <div className="px-3 pb-3 pt-2 flex flex-col">
+            <h3 className="text-base font-medium mb-1">{productName}</h3>
 
-          {product.subCategory && (
-            <p className="text-xs text-gray-500 mb-1.5">{product.subCategory}</p>
-          )}
-
-          {/* المقاسات */}
-          {measuresFromVariants.filter((m) => !isUnified(m.label)).length > 0 && (
-            <div className="mb-1.5">
-              <span className="text-sm font-medium">
-                {t("productCard.sizesLabel")}:
-              </span>
-              <div className="flex gap-1.5 mt-1 flex-wrap">
-                {measuresFromVariants
-                  .filter((m) => !isUnified(m.label))
-                  .map((m) => {
-                    const labelWithUnit = m.unit
-                      ? `${m.label} ${m.unit}`
-                      : m.label;
-                    return (
-                      <button
-                        key={m.slug}
-                        title={labelWithUnit}
-                        onClick={() => setSelectedMeasure(m.slug)}
-                        className={clsx(
-                          "px-3 py-1 text-sm rounded border transition",
-                          selectedMeasure === m.slug
-                            ? "border-black font-bold"
-                            : "border-gray-300"
-                        )}
-                      >
-                        {labelWithUnit}
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
-          {/* الألوان */}
-          {allColorsFromVariants.filter((c) => !isUnified(c.name)).length > 0 && (
-            <div className="mb-1.5">
-              <span className="text-sm font-medium">
-                {t("productCard.colorsLabel")}:
-              </span>
-              <div className="flex gap-1.5 mt-1 flex-wrap">
-                {allColorsFromVariants
-                  .filter((c) => !isUnified(c.name))
-                  .map((c) => {
-                    const isAvailable =
-                      selectedMeasure &&
-                      availableColorSlugsForSelectedMeasure.has(c.slug);
-
-                    return (
-                      <button
-                        key={c.slug}
-                        title={c.name}
-                        onClick={() => {
-                          if (!isAvailable) return;
-                          setSelectedColor(c.slug);
-                          setCurrentImage(0);
-                        }}
-                        disabled={!isAvailable}
-                        className={clsx(
-                          "px-3 py-1 text-sm rounded border transition",
-                          selectedColor === c.slug && isAvailable
-                            ? "border-black font-bold"
-                            : "border-gray-300",
-                          !isAvailable && "opacity-40 cursor-not-allowed"
-                        )}
-                      >
-                        {c.name}
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
-          {/* السعر */}
-          <div className="mb-1.5">
-            {typeof variantCompare === "number" &&
-            variantCompare > displayPrice ? (
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-gray-500 line-through">
-                  ₪{variantCompare}
-                </span>
-                <span className="font-semibold text-base">₪{displayPrice}</span>
-              </div>
-            ) : (
-              <p className="font-semibold text-base mb-0">₪{displayPrice}</p>
+            {product.subCategory && (
+              <p className="text-xs text-gray-500 mb-1.5">{product.subCategory}</p>
             )}
-          </div>
 
-          {/* تايمر خصم */}
-          {showDiscountTimer && progressPct !== null && timeLeftMs !== null && (
-            <div className="mb-2.5">
-              <div
-                className="w-full h-2 rounded-full bg-gray-200 overflow-hidden"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(progressPct)}
-                title={t("productCard.discountTimerTitle")}
-              >
+            {/* المقاسات */}
+            {measuresFromVariants.filter((m) => !isUnified(m.label)).length > 0 && (
+              <div className="mb-1.5">
+                <span className="text-sm font-medium">
+                  {t("productCard.sizesLabel")}:
+                </span>
+                <div className="flex gap-1.5 mt-1 flex-wrap">
+                  {measuresFromVariants
+                    .filter((m) => !isUnified(m.label))
+                    .map((m) => {
+                      const labelWithUnit = m.unit
+                        ? `${m.label} ${m.unit}`
+                        : m.label;
+                      return (
+                        <button
+                          key={m.slug}
+                          title={labelWithUnit}
+                          onClick={() => setSelectedMeasure(m.slug)}
+                          className={clsx(
+                            "px-3 py-1 text-sm rounded border transition",
+                            selectedMeasure === m.slug
+                              ? "border-black font-bold"
+                              : "border-gray-300"
+                          )}
+                        >
+                          {labelWithUnit}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* الألوان */}
+            {allColorsFromVariants.filter((c) => !isUnified(c.name)).length > 0 && (
+              <div className="mb-1.5">
+                <span className="text-sm font-medium">
+                  {t("productCard.colorsLabel")}:
+                </span>
+                <div className="flex gap-1.5 mt-1 flex-wrap">
+                  {allColorsFromVariants
+                    .filter((c) => !isUnified(c.name))
+                    .map((c) => {
+                      const isAvailable =
+                        selectedMeasure &&
+                        availableColorSlugsForSelectedMeasure.has(c.slug);
+
+                      return (
+                        <button
+                          key={c.slug}
+                          title={c.name}
+                          onClick={() => {
+                            if (!isAvailable) return;
+                            setSelectedColor(c.slug);
+                            setCurrentImage(0);
+                          }}
+                          disabled={!isAvailable}
+                          className={clsx(
+                            "px-3 py-1 text-sm rounded border transition",
+                            selectedColor === c.slug && isAvailable
+                              ? "border-black font-bold"
+                              : "border-gray-300",
+                            !isAvailable && "opacity-40 cursor-not-allowed"
+                          )}
+                        >
+                          {c.name}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* السعر */}
+            <div className="mb-1.5">
+              {typeof variantCompare === "number" &&
+              variantCompare > displayPrice ? (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-gray-500 line-through">
+                    ₪{variantCompare}
+                  </span>
+                  <span className="font-semibold text-base">₪{displayPrice}</span>
+                </div>
+              ) : (
+                <p className="font-semibold text-base mb-0">₪{displayPrice}</p>
+              )}
+            </div>
+
+            {/* تايمر خصم */}
+            {showDiscountTimer && progressPct !== null && timeLeftMs !== null && (
+              <div className="mb-2.5">
                 <div
-                  className="h-full bg-red-600 transition-all duration-500"
-                  style={{ width: `${progressPct}%` }}
-                />
+                  className="w-full h-2 rounded-full bg-gray-200 overflow-hidden"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(progressPct)}
+                  title={t("productCard.discountTimerTitle")}
+                >
+                  <div
+                    className="h-full bg-red-600 transition-all duration-500"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+                <div className="mt-1 text-xs text-red-700 font-semibold text-right">
+                  {t("productCard.discountTimer")}
+                </div>
               </div>
-              <div className="mt-1 text-xs text-red-700 font-semibold text-right">
-                {t("productCard.discountTimer")}
-              </div>
-            </div>
-          )}
+            )}
 
-          <div className="mt-auto flex flex-col gap-1.5">
-            <div className="flex justify-end">
-              <button
-                type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 shadow-sm transition hover:bg-gray-100 active:scale-95"
-                onClick={() => setIsDetailsOpen(true)}
-                aria-label={t("productCard.addToCart")}
-                aria-pressed={isDetailsOpen}
-                title={t("productCard.addToCart")}
-              >
-                <Plus
-                  className={clsx(
-                    "h-5 w-5 transition-transform duration-300",
-                    isDetailsOpen && "rotate-45 scale-110"
-                  )}
-                  aria-hidden="true"
-                />
-              </button>
+            <div className="mt-2 flex flex-col gap-1.5">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 shadow-sm transition hover:bg-gray-100 active:scale-95"
+                  onClick={() => setIsDetailsOpen(true)}
+                  aria-label={t("productCard.addToCart")}
+                  aria-pressed={isDetailsOpen}
+                  title={t("productCard.addToCart")}
+                >
+                  <Plus
+                    className={clsx(
+                      "h-5 w-5 transition-transform duration-300",
+                      isDetailsOpen && "rotate-45 scale-110"
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+              <Link to={`/products/${product._id}`}>
+                <Button variant="secondary" className="w-full">
+                  {t("productCard.viewDetails")}
+                </Button>
+              </Link>
             </div>
-            <Link to={`/products/${product._id}`}>
-              <Button variant="secondary" className="w-full">
-                {t("productCard.viewDetails")}
-              </Button>
-            </Link>
           </div>
         </div>
 

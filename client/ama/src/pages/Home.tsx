@@ -365,9 +365,9 @@ const Home: FC = () => {
     <>
       <Navbar />
       <main className="relative overflow-hidden">
-        <div className="pointer-events-none absolute -top-28 -left-32 h-72 w-72 rounded-full bg-amber-200/40 blur-3xl" />
-        <div className="pointer-events-none absolute top-32 -right-20 h-80 w-80 rounded-full bg-rose-200/30 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-10 left-10 h-64 w-64 rounded-full bg-orange-100/40 blur-3xl" />
+        <div className="pointer-events-none absolute -top-28 -left-32 h-72 w-72 rounded-full bg-slate-200/55 blur-3xl" />
+        <div className="pointer-events-none absolute top-32 -right-20 h-80 w-80 rounded-full bg-zinc-200/45 blur-3xl" />
+        <div className="pointer-events-none absolute bottom-10 left-10 h-64 w-64 rounded-full bg-slate-100/60 blur-3xl" />
 
         <div className="container mx-auto px-4 py-6 md:py-12">
           {/* البطل */}
@@ -422,7 +422,7 @@ const Home: FC = () => {
               className="relative fade-up"
               style={{ animationDelay: "0.15s" }}
             >
-              <div className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-br from-orange-200/40 via-transparent to-rose-200/40 blur-2xl" />
+              <div className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-br from-zinc-200/45 via-transparent to-slate-200/45 blur-2xl" />
               <img
                 src={heroImage}
                 alt={t("home.hero.imageAlt")}
