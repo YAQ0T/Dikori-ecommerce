@@ -426,7 +426,7 @@ const Home: FC = () => {
               <img
                 src={heroImage}
                 alt={t("home.hero.imageAlt")}
-                className="relative w-full rounded-[2.2rem] shadow-2xl object-cover aspect-[4/5]"
+                className="relative w-full rounded-[2.2rem] shadow-2xl object-cover aspect-[4/5] lg:aspect-[16/10] xl:aspect-[3/2] lg:max-h-[520px] xl:max-h-[560px]"
                 width={900}
                 height={1125}
                 decoding="async"
