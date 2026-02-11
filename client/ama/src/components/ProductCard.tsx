@@ -6,20 +6,19 @@ import {
   useRef,
   type ChangeEvent,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import clsx from "clsx";
 import { useCart } from "@/context/CartContext";
 import { useFavorites, type FavoriteProduct } from "@/context/FavoritesContext";
 import { Button } from "@/components/ui/button";
 import { getLocalizedText, type LocalizedText } from "@/lib/localized";
-import { getColorLabel } from "@/lib/colors";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTranslation } from "@/i18n";
 import {
   Loader2,
   Check,
-  Plus,
+  ShoppingBag,
   X,
   ChevronUp,
   ChevronDown,
@@ -64,10 +63,6 @@ type Variant = {
   displayCompareAt?: number | null;
   isDiscountActive?: boolean;
 };
-
-const normalize = (s?: string) =>
-  (s || "").trim().replace(/\s+/g, "").toLowerCase();
-const isUnified = (s?: string) => normalize(s) === normalize("موحد");
 
 const clamp = (n: number, min = 0, max = 100) =>
   Math.max(min, Math.min(max, n));
@@ -246,35 +241,6 @@ const ProductCard: React.FC<Props> = ({ product }) => {
   }, [product._id]);
 
   // اشتقاقات
-  const measuresFromVariants = useMemo(() => {
-    const map = new Map<string, { label: string; unit?: string }>();
-    for (const v of variants) {
-      if (v.measureSlug && v.measure) {
-        const existing = map.get(v.measureSlug);
-        map.set(v.measureSlug, {
-          label: v.measure,
-          unit: existing?.unit ?? (v.measureUnit || undefined),
-        });
-      }
-    }
-    return Array.from(map.entries()).map(([slug, { label, unit }]) => ({
-      slug,
-      label,
-      unit,
-    }));
-  }, [variants]);
-
-  const allColorsFromVariants = useMemo(() => {
-    const map = new Map<string, { slug: string; name: string }>();
-    for (const v of variants) {
-      if (!v.colorSlug) continue;
-      const source = v.color?.name || v.colorSlug;
-      const localized = getLocalizedText(getColorLabel(source), locale) || source;
-      map.set(v.colorSlug, { slug: v.colorSlug, name: localized });
-    }
-    return Array.from(map.values());
-  }, [variants, locale]);
-
   const colorsByMeasure = useMemo(() => {
     const m = new Map<string, Set<string>>();
     for (const v of variants) {
@@ -284,11 +250,6 @@ const ProductCard: React.FC<Props> = ({ product }) => {
     }
     return m;
   }, [variants]);
-
-  const availableColorSlugsForSelectedMeasure = useMemo(() => {
-    if (!selectedMeasure) return new Set<string>();
-    return colorsByMeasure.get(selectedMeasure) || new Set<string>();
-  }, [colorsByMeasure, selectedMeasure]);
 
   const currentVariant = useMemo(() => {
     if (!variants.length || !selectedMeasure || !selectedColor) return null;
@@ -841,10 +802,10 @@ const ProductCard: React.FC<Props> = ({ product }) => {
                 aria-pressed={isDetailsOpen}
                 title={t("productCard.addToCart")}
               >
-                <Plus
+                <ShoppingBag
                   className={clsx(
                     "h-4 w-4 transition-transform duration-300",
-                    isDetailsOpen && "rotate-45 scale-110"
+                    isDetailsOpen && "scale-110"
                   )}
                   aria-hidden="true"
                 />
@@ -878,6 +839,19 @@ const ProductCard: React.FC<Props> = ({ product }) => {
           "hidden md:flex group surface-card p-0 overflow-hidden text-right relative flex-col transition-all duration-300",
           isDetailsOpen && "ring-2 ring-black/10"
         )}
+        onClick={() => {
+          if (isDetailsOpen) return;
+          navigate(`/products/${product._id}`);
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (isDetailsOpen) return;
+            navigate(`/products/${product._id}`);
+          }
+        }}
       >
         <div
           className={clsx(
@@ -889,15 +863,6 @@ const ProductCard: React.FC<Props> = ({ product }) => {
         >
           <div
             className="relative w-full aspect-square overflow-hidden bg-white cursor-pointer"
-            onClick={() => navigate(`/products/${product._id}`)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                navigate(`/products/${product._id}`);
-              }
-            }}
           >
             {displayedImages.map((src, index) => (
               <img
@@ -1012,81 +977,8 @@ const ProductCard: React.FC<Props> = ({ product }) => {
               <p className="text-xs text-gray-500 mb-1.5">{product.subCategory}</p>
             )}
 
-            {/* المقاسات */}
-            {measuresFromVariants.filter((m) => !isUnified(m.label)).length > 0 && (
-              <div className="mb-1.5">
-                <span className="text-sm font-medium">
-                  {t("productCard.sizesLabel")}:
-                </span>
-                <div className="flex gap-1.5 mt-1 flex-wrap">
-                  {measuresFromVariants
-                    .filter((m) => !isUnified(m.label))
-                    .map((m) => {
-                      const labelWithUnit = m.unit
-                        ? `${m.label} ${m.unit}`
-                        : m.label;
-                      return (
-                        <button
-                          key={m.slug}
-                          title={labelWithUnit}
-                          onClick={() => setSelectedMeasure(m.slug)}
-                          className={clsx(
-                            "px-3 py-1 text-sm rounded border transition",
-                            selectedMeasure === m.slug
-                              ? "border-black font-bold"
-                              : "border-gray-300"
-                          )}
-                        >
-                          {labelWithUnit}
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-
-            {/* الألوان */}
-            {allColorsFromVariants.filter((c) => !isUnified(c.name)).length > 0 && (
-              <div className="mb-1.5">
-                <span className="text-sm font-medium">
-                  {t("productCard.colorsLabel")}:
-                </span>
-                <div className="flex gap-1.5 mt-1 flex-wrap">
-                  {allColorsFromVariants
-                    .filter((c) => !isUnified(c.name))
-                    .map((c) => {
-                      const isAvailable =
-                        selectedMeasure &&
-                        availableColorSlugsForSelectedMeasure.has(c.slug);
-
-                      return (
-                        <button
-                          key={c.slug}
-                          title={c.name}
-                          onClick={() => {
-                            if (!isAvailable) return;
-                            setSelectedColor(c.slug);
-                            setCurrentImage(0);
-                          }}
-                          disabled={!isAvailable}
-                          className={clsx(
-                            "px-3 py-1 text-sm rounded border transition",
-                            selectedColor === c.slug && isAvailable
-                              ? "border-black font-bold"
-                              : "border-gray-300",
-                            !isAvailable && "opacity-40 cursor-not-allowed"
-                          )}
-                        >
-                          {c.name}
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-
             {/* السعر */}
-            <div className="mb-1.5">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
               {typeof variantCompare === "number" &&
               variantCompare > displayPrice ? (
                 <div className="flex items-baseline gap-1.5">
@@ -1098,6 +990,31 @@ const ProductCard: React.FC<Props> = ({ product }) => {
               ) : (
                 <p className="font-semibold text-base mb-0">₪{displayPrice}</p>
               )}
+              <button
+                type="button"
+                className={clsx(
+                  "inline-flex h-9 w-11 items-center justify-center rounded-md border border-black bg-black text-white shadow-sm transition-all duration-300 cursor-pointer",
+                  "opacity-0 -translate-x-3 pointer-events-none",
+                  "group-hover:opacity-100 group-hover:translate-x-0 group-hover:pointer-events-auto",
+                  "hover:bg-black/90 hover:shadow-md active:scale-[0.98]",
+                  isDetailsOpen && "opacity-100 translate-x-0 pointer-events-auto"
+                )}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsDetailsOpen(true);
+                }}
+                aria-label={t("productCard.addToCart")}
+                aria-pressed={isDetailsOpen}
+                title={t("productCard.addToCart")}
+              >
+                <ShoppingBag
+                  className={clsx(
+                    "h-4 w-4 transition-transform duration-300",
+                    isDetailsOpen && "scale-110"
+                  )}
+                  aria-hidden="true"
+                />
+              </button>
             </div>
 
             {/* تايمر خصم */}
@@ -1122,31 +1039,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
               </div>
             )}
 
-            <div className="mt-2 flex flex-col gap-1.5">
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 shadow-sm transition hover:bg-gray-100 active:scale-95"
-                  onClick={() => setIsDetailsOpen(true)}
-                  aria-label={t("productCard.addToCart")}
-                  aria-pressed={isDetailsOpen}
-                  title={t("productCard.addToCart")}
-                >
-                  <Plus
-                    className={clsx(
-                      "h-5 w-5 transition-transform duration-300",
-                      isDetailsOpen && "rotate-45 scale-110"
-                    )}
-                    aria-hidden="true"
-                  />
-                </button>
-              </div>
-              <Link to={`/products/${product._id}`}>
-                <Button variant="secondary" className="w-full">
-                  {t("productCard.viewDetails")}
-                </Button>
-              </Link>
-            </div>
+            <div className="mt-2" />
           </div>
         </div>
 

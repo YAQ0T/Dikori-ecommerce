@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { useTranslation } from "@/i18n";
 import { ensureLocalizedObject } from "@/lib/localized";
 import type { SupportedLocale } from "@/context/LanguageContext";
+import { parseProductDescription } from "@/lib/productDescription";
 
 interface ProductEditDialogProps {
   onClose: () => void;
@@ -273,6 +274,12 @@ const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
           <span className="text-sm font-medium">
             {t("admin.productEdit.placeholders.description")}
           </span>
+          <p className="text-xs text-muted-foreground">
+            {t("admin.productEdit.helpers.descriptionFormat", {
+              defaultValue:
+                "استخدم سطرًا جديدًا لفقرة جديدة، واكتب - في بداية السطر لعرضه كنقطة.",
+            })}
+          </p>
           <div className="grid gap-3">
             {languages.map(({ code, label }) => (
               <div key={`desc-${code}`} className="grid gap-1 text-right">
@@ -283,6 +290,7 @@ const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
                       ? "admin.productEdit.placeholders.descriptionAr"
                       : "admin.productEdit.placeholders.descriptionHe"
                   )}
+                  className="min-h-36 resize-y border-[#D8DDE3] bg-[#F5F7F9] leading-7"
                   value={descriptionState[code]}
                   onChange={(e) =>
                     setEditingProduct({
@@ -298,6 +306,47 @@ const ProductEditDialog: React.FC<ProductEditDialogProps> = ({
                 />
               </div>
             ))}
+          </div>
+          <div className="grid gap-3 rounded-md border border-[#E2E6EA] bg-[#F5F7F9] p-3">
+            <span className="text-xs font-semibold text-gray-700">
+              {t("admin.productEdit.labels.descriptionPreview", {
+                defaultValue: "معاينة الوصف",
+              })}
+            </span>
+            {languages.map(({ code, label }) => {
+              const blocks = parseProductDescription(descriptionState[code]);
+              return (
+                <div key={`preview-${code}`} className="rounded-md bg-white p-3">
+                  <p className="mb-2 text-xs text-muted-foreground">{label}</p>
+                  {blocks.length > 0 ? (
+                    <div className="space-y-2 text-sm leading-7 text-gray-700">
+                      {blocks.map((block, index) =>
+                        block.type === "paragraph" ? (
+                          <p key={`preview-par-${code}-${index}`}>{block.text}</p>
+                        ) : (
+                          <ul
+                            key={`preview-list-${code}-${index}`}
+                            className="list-disc space-y-1 pr-5"
+                          >
+                            {block.items.map((item, itemIndex) => (
+                              <li key={`preview-item-${code}-${index}-${itemIndex}`}>
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t("admin.productEdit.helpers.descriptionEmpty", {
+                        defaultValue: "لا يوجد وصف مكتوب بعد.",
+                      })}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

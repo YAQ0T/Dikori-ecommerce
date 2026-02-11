@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import Navbar from "@/components/Navbar";
@@ -10,10 +10,19 @@ import { useCart } from "@/context/CartContext";
 import { useFavorites, type FavoriteProduct } from "@/context/FavoritesContext";
 import { getLocalizedText, type LocalizedObject } from "@/lib/localized";
 import { getColorLabel } from "@/lib/colors";
+import { dispatchCartHighlight } from "@/lib/cartHighlight";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTranslation } from "@/i18n";
 import clsx from "clsx";
-import { Heart } from "lucide-react";
+import {
+  Heart,
+  ChevronLeft,
+  ChevronRight,
+  ShoppingBag,
+  Loader2,
+  Check,
+} from "lucide-react";
+import { parseProductDescription } from "@/lib/productDescription";
 
 /* ========== الأنواع ========== */
 type Variant = {
@@ -228,6 +237,11 @@ const ProductDetails: React.FC = () => {
   const [progressPct, setProgressPct] = useState<number | null>(null);
   const [showDiscountTimer, setShowDiscountTimer] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [addToCartState, setAddToCartState] = useState<"idle" | "success" | "error">(
+    "idle"
+  );
+  const addToCartStateResetRef = useRef<number | null>(null);
 
   const productName = useMemo(
     () => getLocalizedText(product?.name, locale) || "",
@@ -237,6 +251,10 @@ const ProductDetails: React.FC = () => {
   const productDescription = useMemo(
     () => getLocalizedText(product?.description, locale) || "",
     [product?.description, locale]
+  );
+  const descriptionBlocks = useMemo(
+    () => parseProductDescription(productDescription),
+    [productDescription]
   );
 
   const timeLeft = useMemo(() => {
@@ -257,6 +275,23 @@ const ProductDetails: React.FC = () => {
       )
       .join(" ");
   }, [timeLeft, t]);
+
+  useEffect(() => {
+    return () => {
+      if (addToCartStateResetRef.current !== null) {
+        window.clearTimeout(addToCartStateResetRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleAddToCartStateReset = useCallback(() => {
+    if (addToCartStateResetRef.current !== null) {
+      window.clearTimeout(addToCartStateResetRef.current);
+    }
+    addToCartStateResetRef.current = window.setTimeout(() => {
+      setAddToCartState("idle");
+    }, 1600);
+  }, []);
 
   useEffect(() => {
     if (variants.length > 0) {
@@ -356,16 +391,24 @@ const ProductDetails: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measure, colorsByMeasure]);
 
-  const images =
-    currentVariant?.color?.images && currentVariant.color.images.length > 0
-      ? currentVariant.color.images
-      : product?.images?.length
-      ? product.images
-      : ["https://i.imgur.com/PU1aG4t.jpeg"];
+  const images = useMemo(() => {
+    if (currentVariant?.color?.images && currentVariant.color.images.length > 0) {
+      return currentVariant.color.images;
+    }
+    if (product?.images?.length) return product.images;
+    return ["https://i.imgur.com/PU1aG4t.jpeg"];
+  }, [currentVariant?.color?.images, product?.images]);
 
   const nextImage = () => setCurrentImage((p) => (p + 1) % images.length);
   const prevImage = () =>
     setCurrentImage((p) => (p - 1 + images.length) % images.length);
+
+  useEffect(() => {
+    if (!images.length) return;
+    if (currentImage > images.length - 1) {
+      setCurrentImage(0);
+    }
+  }, [images, currentImage]);
 
   /* --- السعر/الخصم (المصدر الموحّد) --- */
   const {
@@ -476,230 +519,374 @@ const ProductDetails: React.FC = () => {
   return (
     <>
       <Navbar />
-      <main className="container mx-auto p-6 text-right">
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* ✅ سلايدر الصور */}
-          <div className="surface-card p-3">
-            <div className="relative w-full aspect-[4/5] overflow-hidden rounded-xl group bg-white/70 dark:bg-gray-900/60">
+      <main className="container mx-auto px-4 py-6 md:py-10 text-right">
+        <div className="grid items-start gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+          <section className="surface-card p-4 md:p-5">
+            <div className="relative w-full overflow-hidden rounded-xl bg-[#F5F7F9] aspect-[4/5] group">
               {images.map((src: string, index: number) => (
                 <img
-                  key={index}
+                  key={`${src}-${index}`}
                   src={src}
                   alt={productName}
                   className={clsx(
-                    "absolute top-0 left-0 w-full h-full object-contain transition-all duration-500 pointer-events-none",
-                    {
-                      "opacity-100 translate-x-0 z-10": index === currentImage,
-                      "opacity-0 translate-x-full z-0": index > currentImage,
-                      "opacity-0 -translate-x-full z-0": index < currentImage,
-                    }
+                    "absolute inset-0 h-full w-full object-cover transition-all duration-500 ease-out",
+                    index === currentImage
+                      ? "opacity-100 scale-100 z-10"
+                      : "opacity-0 scale-[1.02] z-0"
                   )}
                   loading={index === 0 ? "eager" : "lazy"}
                   decoding="async"
-                  sizes="(max-width: 768px) 100vw, 50vw"
+                  sizes="(max-width: 1024px) 100vw, 55vw"
                   width={900}
                   height={1125}
                 />
               ))}
 
+              {discountActive && discountPercent !== null && (
+                <span className="absolute top-3 right-3 z-20 rounded-md bg-red-600 px-2 py-1 text-xs font-bold text-white">
+                  -{discountPercent}%
+                </span>
+              )}
+
               {images.length > 1 && (
                 <>
                   <button
+                    type="button"
                     onClick={prevImage}
-                    className="absolute top-1/2 left-2 -translate-y-1/2 bg-white/70 hover:bg-white text-black rounded-full px-3 py-1 shadow-lg border border-gray-300 hover:scale-105 transition opacity-0 group-hover:opacity-100 z-20"
+                    className="absolute top-1/2 right-3 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[#D8DDE3] bg-white/90 text-black shadow-sm transition hover:scale-105 hover:bg-white"
+                    aria-label={t("productCard.previousImage", {
+                      defaultValue: "Previous image",
+                    })}
                   >
-                    ◀
+                    <ChevronRight className="h-5 w-5" />
                   </button>
                   <button
+                    type="button"
                     onClick={nextImage}
-                    className="absolute top-1/2 right-2 -translate-y-1/2 bg-white/70 hover:bg-white text-black rounded-full px-3 py-1 shadow-lg border border-gray-300 hover:scale-105 transition opacity-0 group-hover:opacity-100 z-20"
+                    className="absolute top-1/2 left-3 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-[#D8DDE3] bg-white/90 text-black shadow-sm transition hover:scale-105 hover:bg-white"
+                    aria-label={t("productCard.nextImage", {
+                      defaultValue: "Next image",
+                    })}
                   >
-                    ▶
+                    <ChevronLeft className="h-5 w-5" />
                   </button>
-
-                  {discountActive && discountPercent !== null && (
-                    <span className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">
-                      -{discountPercent}%
-                    </span>
-                  )}
                 </>
               )}
             </div>
-          </div>
 
-          {/* ✅ التفاصيل */}
-          <div className="surface-card p-5 md:p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-3xl font-bold">{productName}</h1>
-              <button
-                type="button"
-                disabled={!favoritePayload}
-                onClick={handleToggleFavorite}
-                className={clsx(
-                  "inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition",
-                  !favoritePayload && "cursor-not-allowed opacity-60",
-                  favoritePayload &&
-                    (isFavoriteProduct
-                      ? "bg-red-600 text-white border-red-500 hover:bg-red-500"
-                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100")
-                )}
-                aria-label={
-                  isFavoriteProduct
-                    ? t("productDetails.removeFavorite")
-                    : t("productDetails.addToFavorites")
-                }
-              >
-                <Heart
-                  className="h-5 w-5"
-                  fill={isFavoriteProduct ? "currentColor" : "none"}
-                  aria-hidden="true"
-                />
-              </button>
-            </div>
-            <p className="text-gray-700 mb-4">{productDescription}</p>
-
-            {/* المقاس + الوحدة */}
-            {showMeasureUI && (
-              <div className="mb-4">
-                <label className="block mb-1">
-                  {t("productDetails.measureLabel")}
-                </label>
-                <select
-                  className="w-full border rounded p-2"
-                  value={measure}
-                  onChange={(e) => setMeasure(e.target.value)}
-                >
-                  {measures.map((m) => {
-                    const text = m.unit ? `${m.label} ${m.unit}` : m.label;
-                    return (
-                      <option key={m.slug} value={m.slug}>
-                        {text}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-
-            {/* اللون (مع إخفاء موحّد) */}
-            {showColorsUI && (
-              <div className="mb-4">
-                <label className="block mb-1">
-                  {t("productDetails.colorLabel")}
-                </label>
-                <select
-                  className="w-full border rounded p-2"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                >
-                  {allColors.map((c) => {
-                    const available =
-                      measure && availableColorsForMeasure.has(c.slug);
-                    return (
-                      <option key={c.slug} value={c.slug} disabled={!available}>
-                        {c.name}
-                        {!available
-                          ? ` ${t("productDetails.colorUnavailable")}`
-                          : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-
-            {/* السعر */}
-            <div className="mb-2">
-              {typeof comparePrice === "number" &&
-              typeof finalPrice === "number" &&
-              comparePrice > finalPrice ? (
-                <div className="flex items-baseline gap-2">
-                  <span className="text-gray-500 line-through">₪{comparePrice}</span>
-                  <span className="text-xl font-semibold">₪{finalPrice}</span>
-                </div>
-              ) : (
-                <p className="text-xl font-semibold">
-                  {typeof finalPrice === "number" ? (
-                    <>₪{finalPrice}</>
-                  ) : (
-                    t("productDetails.price.selectOptions")
-                  )}
-                </p>
-              )}
-            </div>
-
-            {/* مؤقّت الخصم */}
-            {showDiscountTimer &&
-              progressPct !== null &&
-              timeLeftMs !== null && (
-                <div className="mb-4">
-                  <div
-                    className="w-full h-2 rounded-full bg-gray-200 overflow-hidden"
-                    aria-label={t("productDetails.discount.progressAria")}
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(progressPct)}
-                    title={t("productDetails.discount.progressTitle")}
+            {images.length > 1 && (
+              <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-6">
+                {images.map((src: string, index: number) => (
+                  <button
+                    key={`thumb-${src}-${index}`}
+                    type="button"
+                    onClick={() => setCurrentImage(index)}
+                    className={clsx(
+                      "overflow-hidden rounded-md border bg-white transition-all duration-300",
+                      index === currentImage
+                        ? "border-black ring-1 ring-black/20"
+                        : "border-[#D8DDE3] opacity-80 hover:opacity-100 hover:border-black/50"
+                    )}
+                    aria-label={t("productDetails.imageThumbnailAria", {
+                      defaultValue: `Image ${index + 1}`,
+                    })}
                   >
-                    <div
-                      className="h-full bg-red-600 transition-all duration-500"
-                      style={{ width: `${progressPct}%` }}
+                    <img
+                      src={src}
+                      alt={`${productName} ${index + 1}`}
+                      className="h-14 w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
                     />
-                  </div>
-                  <div className="mt-1 text-xs text-red-700 font-semibold text-right">
-                    {t("productDetails.discount.endsIn")} {timeLeftText}
-                  </div>
-                </div>
-              )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
 
-            <div className="flex items-end gap-4 mt-6">
-              <div className="flex flex-col gap-2 text-right">
-                <label className="text-sm font-medium">
-                  {t("productDetails.quantityLabel")}
-                </label>
-                {currentVariant?.trackQuantity === true && (
-                  <p className="text-xs text-muted-foreground">
-                    {maxSelectableQuantity > 0
-                      ? locale === "he"
-                        ? `זמין: ${maxSelectableQuantity}`
-                        : `المتاح: ${maxSelectableQuantity}`
-                      : t("productCard.outOfStock")}
+          <section className="space-y-5">
+            <div className="surface-card p-5 md:p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <h1 className="text-2xl md:text-3xl font-bold leading-tight">
+                    {productName}
+                  </h1>
+                  {currentVariant?.stock?.sku && (
+                    <p className="text-sm text-muted-foreground">
+                      {currentVariant.stock.sku}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={!favoritePayload}
+                  onClick={handleToggleFavorite}
+                  className={clsx(
+                    "inline-flex h-10 w-10 items-center justify-center rounded-full border shadow-sm transition",
+                    !favoritePayload && "cursor-not-allowed opacity-60",
+                    favoritePayload &&
+                      (isFavoriteProduct
+                        ? "bg-red-600 text-white border-red-500 hover:bg-red-500"
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100")
+                  )}
+                  aria-label={
+                    isFavoriteProduct
+                      ? t("productDetails.removeFavorite")
+                      : t("productDetails.addToFavorites")
+                  }
+                >
+                  <Heart
+                    className="h-5 w-5"
+                    fill={isFavoriteProduct ? "currentColor" : "none"}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-foreground">
+                  {t("productDetails.descriptionTitle", {
+                    defaultValue:
+                      locale === "he" ? "תיאור המוצר" : "وصف المنتج",
+                  })}
+                </h2>
+                {descriptionBlocks.length > 0 ? (
+                  <div className="space-y-3 text-sm leading-7 text-muted-foreground">
+                    {descriptionBlocks.map((block, index) =>
+                      block.type === "paragraph" ? (
+                        <p key={`desc-paragraph-${index}`}>{block.text}</p>
+                      ) : (
+                        <ul
+                          key={`desc-list-${index}`}
+                          className="list-disc pr-5 space-y-1 marker:text-black"
+                        >
+                          {block.items.map((item, itemIndex) => (
+                            <li key={`desc-item-${index}-${itemIndex}`}>{item}</li>
+                          ))}
+                        </ul>
+                      )
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t("productDetails.descriptionFallback", {
+                      defaultValue:
+                        locale === "he"
+                          ? "אין תיאור זמין למוצר."
+                          : "لا يوجد وصف متاح لهذا المنتج.",
+                    })}
                   </p>
                 )}
-                <QuantityInput
-                  quantity={quantity}
-                  onChange={handleQuantityChange}
-                />
               </div>
-              <Button
-                disabled={isCtaDisabled}
-                onClick={() => {
-                  if (!currentVariant || isCtaDisabled) return;
-                  const computed = computeVariantPricing(currentVariant);
-                  const priceForCart =
-                    typeof computed.final === "number"
-                      ? computed.final
-                      : (currentVariant.price?.amount ?? product.price ?? 0);
 
-                  addToCart(
-                    {
-                      ...product,
-                      selectedVariantId: currentVariant._id,
-                      selectedSku: currentVariant.stock.sku,
-                      selectedMeasure: currentVariant.measure,
-                      selectedMeasureUnit: currentVariant.measureUnit || undefined,
-                      selectedColor: currentVariant.color?.name,
-                      price: priceForCart,
-                    },
-                    quantity
-                  );
-                }}
-              >
-                {t("productDetails.cta.addToCart")}
-              </Button>
+              {showMeasureUI && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    {t("productDetails.measureLabel")}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {measures.map((m) => {
+                      const text = m.unit ? `${m.label} ${m.unit}` : m.label;
+                      const active = measure === m.slug;
+                      return (
+                        <button
+                          key={m.slug}
+                          type="button"
+                          onClick={() => setMeasure(m.slug)}
+                          className={clsx(
+                            "rounded-lg border px-3 py-2 text-sm transition",
+                            active
+                              ? "border-black bg-black text-white"
+                              : "border-[#D8DDE3] bg-[#F5F7F9] text-gray-800 hover:border-black/60"
+                          )}
+                        >
+                          {text}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {showColorsUI && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    {t("productDetails.colorLabel")}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {allColors.map((c) => {
+                      const available = !measure || availableColorsForMeasure.has(c.slug);
+                      const active = color === c.slug;
+                      return (
+                        <button
+                          key={c.slug}
+                          type="button"
+                          onClick={() => {
+                            if (!available) return;
+                            setColor(c.slug);
+                          }}
+                          disabled={!available}
+                          className={clsx(
+                            "rounded-lg border px-3 py-2 text-sm transition",
+                            active && available
+                              ? "border-black bg-black text-white"
+                              : "border-[#D8DDE3] bg-[#F5F7F9] text-gray-800",
+                            available
+                              ? "hover:border-black/60"
+                              : "cursor-not-allowed opacity-40"
+                          )}
+                        >
+                          {c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+
+            <div className="surface-card p-5 md:p-6 space-y-4 bg-[#F5F7F9]/65">
+              <div className="flex items-end justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("productDetails.priceLabel", {
+                    defaultValue: locale === "he" ? "מחיר" : "السعر",
+                  })}
+                </p>
+                {typeof comparePrice === "number" &&
+                typeof finalPrice === "number" &&
+                comparePrice > finalPrice ? (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-gray-500 line-through">₪{comparePrice}</span>
+                    <span className="text-2xl font-semibold">₪{finalPrice}</span>
+                  </div>
+                ) : (
+                  <p className="text-2xl font-semibold">
+                    {typeof finalPrice === "number" ? (
+                      <>₪{finalPrice}</>
+                    ) : (
+                      t("productDetails.price.selectOptions")
+                    )}
+                  </p>
+                )}
+              </div>
+
+              {showDiscountTimer &&
+                progressPct !== null &&
+                timeLeftMs !== null && (
+                  <div>
+                    <div
+                      className="h-2 w-full overflow-hidden rounded-full bg-gray-200"
+                      aria-label={t("productDetails.discount.progressAria")}
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={Math.round(progressPct)}
+                      title={t("productDetails.discount.progressTitle")}
+                    >
+                      <div
+                        className="h-full bg-red-600 transition-all duration-500"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs font-semibold text-red-700 text-right">
+                      {t("productDetails.discount.endsIn")} {timeLeftText}
+                    </p>
+                  </div>
+                )}
+
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div className="flex flex-col gap-2 text-right">
+                  <label className="text-sm font-medium">
+                    {t("productDetails.quantityLabel")}
+                  </label>
+                  {currentVariant?.trackQuantity === true && (
+                    <p className="text-xs text-muted-foreground">
+                      {maxSelectableQuantity > 0
+                        ? locale === "he"
+                          ? `זמין: ${maxSelectableQuantity}`
+                          : `المتاح: ${maxSelectableQuantity}`
+                        : t("productCard.outOfStock")}
+                    </p>
+                  )}
+                  <QuantityInput
+                    quantity={quantity}
+                    onChange={handleQuantityChange}
+                  />
+                </div>
+
+                <div className="flex min-w-[220px] flex-col items-stretch gap-1">
+                  <Button
+                    className={clsx(
+                      "h-11 min-w-[220px] gap-2 transition-all duration-200 active:scale-[0.985]",
+                      addToCartState === "success" && "bg-emerald-600 hover:bg-emerald-600"
+                    )}
+                    disabled={isCtaDisabled || isAddingToCart}
+                    onClick={() => {
+                      if (!currentVariant || isCtaDisabled || isAddingToCart) return;
+
+                      setIsAddingToCart(true);
+                      setAddToCartState("idle");
+
+                      try {
+                        const computed = computeVariantPricing(currentVariant);
+                        const priceForCart =
+                          typeof computed.final === "number"
+                            ? computed.final
+                            : (currentVariant.price?.amount ?? product.price ?? 0);
+
+                        addToCart(
+                          {
+                            ...product,
+                            selectedVariantId: currentVariant._id,
+                            selectedSku: currentVariant.stock.sku,
+                            selectedMeasure: currentVariant.measure,
+                            selectedMeasureUnit: currentVariant.measureUnit || undefined,
+                            selectedColor: currentVariant.color?.name,
+                            price: priceForCart,
+                          },
+                          quantity
+                        );
+
+                        dispatchCartHighlight();
+                        setAddToCartState("success");
+                        scheduleAddToCartStateReset();
+                      } catch {
+                        setAddToCartState("error");
+                        scheduleAddToCartStateReset();
+                      } finally {
+                        setIsAddingToCart(false);
+                      }
+                    }}
+                  >
+                    {isAddingToCart ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {locale === "he" ? "מוסיף לעגלה..." : "جارٍ الإضافة..."}
+                      </>
+                    ) : addToCartState === "success" ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        {locale === "he" ? "נוסף לעגלה" : "تمت الإضافة"}
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingBag className="h-4 w-4" />
+                        {t("productDetails.cta.addToCart")}
+                      </>
+                    )}
+                  </Button>
+
+                  {addToCartState === "error" && (
+                    <p className="text-xs text-red-600 text-right">
+                      {locale === "he"
+                        ? "אירעה שגיאה בהוספה לעגלה"
+                        : "حدث خطأ أثناء الإضافة للسلة"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </main>
       <Footer />

@@ -1,5 +1,5 @@
 // client/ama/src/pages/Cart.tsx
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,213 @@ type DiscountPreview = {
 };
 
 const currency = (n: number) => `₪${Number(n || 0).toFixed(2)}`;
+const MAX_ORDER_QTY = 999999;
+
+type VariantOption = {
+  _id: string;
+  product: string;
+  measure: string;
+  measureUnit?: string;
+  measureSlug?: string;
+  color?: {
+    name?: string;
+    images?: string[];
+  };
+  colorSlug?: string;
+  price?: {
+    amount?: number;
+    compareAt?: number;
+    discount?: {
+      type?: "percent" | "amount";
+      value?: number;
+      startAt?: string;
+      endAt?: string;
+    };
+  };
+  stock?: {
+    inStock?: number;
+    sku?: string;
+  };
+  trackQuantity?: boolean;
+};
+
+type CartVariantMeta = {
+  selectedVariantId?: string;
+  selectedSku?: string;
+  selectedColor?: string;
+  selectedMeasure?: string;
+  selectedMeasureUnit?: string;
+  trackQuantity?: boolean;
+};
+
+const normalizeText = (value?: string) =>
+  String(value || "").trim().toLowerCase();
+
+const slugifyText = (value?: string) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+
+const variantMeasureKey = (variant?: VariantOption | null) =>
+  normalizeText(variant?.measureSlug || slugifyText(variant?.measure));
+
+const variantColorKey = (variant?: VariantOption | null) =>
+  normalizeText(variant?.colorSlug || slugifyText(variant?.color?.name));
+
+function normalizeVariantsResponse(data: any): VariantOption[] {
+  if (Array.isArray(data?.items)) return data.items as VariantOption[];
+  if (Array.isArray(data)) return data as VariantOption[];
+  return [];
+}
+
+function computeVariantUnitPrice(variant?: VariantOption): number {
+  if (!variant) return 0;
+  const amount = Number(variant.price?.amount ?? 0);
+  const discount = variant.price?.discount;
+  if (!discount || !discount.value || amount <= 0) return amount;
+
+  const now = Date.now();
+  const startAt = discount.startAt ? new Date(discount.startAt).getTime() : null;
+  const endAt = discount.endAt ? new Date(discount.endAt).getTime() : null;
+  const inWindow =
+    (startAt === null || now >= startAt) && (endAt === null || now < endAt);
+  if (!inWindow) return amount;
+
+  if (discount.type === "amount") {
+    return Math.max(0, Number((amount - Number(discount.value || 0)).toFixed(2)));
+  }
+  if (discount.type === "percent") {
+    return Math.max(
+      0,
+      Number((amount - (amount * Number(discount.value || 0)) / 100).toFixed(2))
+    );
+  }
+  return amount;
+}
+
+function getVariantMaxQty(variant: VariantOption | null): number {
+  if (!variant || variant.trackQuantity !== true) return MAX_ORDER_QTY;
+  const stock = Math.max(0, Number(variant.stock?.inStock || 0));
+  return Math.min(MAX_ORDER_QTY, stock);
+}
+
+type MeasureOption = {
+  key: string;
+  label: string;
+};
+
+type ColorOption = {
+  key: string;
+  label: string;
+};
+
+function getMeasureOptions(variants: VariantOption[]): MeasureOption[] {
+  const map = new Map<string, MeasureOption>();
+  for (const variant of variants) {
+    const key = variantMeasureKey(variant);
+    if (!key) continue;
+    if (map.has(key)) continue;
+    const label = variant.measureUnit
+      ? `${variant.measure} ${variant.measureUnit}`
+      : variant.measure || "بدون مقاس";
+    map.set(key, { key, label });
+  }
+  return Array.from(map.values());
+}
+
+function getColorOptions(variants: VariantOption[]): ColorOption[] {
+  const map = new Map<string, ColorOption>();
+  for (const variant of variants) {
+    const key = variantColorKey(variant);
+    if (!key) continue;
+    if (map.has(key)) continue;
+    map.set(key, { key, label: variant.color?.name || "بدون لون" });
+  }
+  return Array.from(map.values());
+}
+
+function findVariantBySelections(
+  variants: VariantOption[],
+  currentVariant: VariantOption | null,
+  {
+    measureKey,
+    colorKey,
+  }: {
+    measureKey?: string;
+    colorKey?: string;
+  }
+): VariantOption | null {
+  if (!variants.length) return null;
+  const targetMeasure = normalizeText(measureKey || variantMeasureKey(currentVariant));
+  const targetColor = normalizeText(colorKey || variantColorKey(currentVariant));
+
+  if (targetMeasure && targetColor) {
+    const exact = variants.find(
+      (variant) =>
+        variantMeasureKey(variant) === targetMeasure &&
+        variantColorKey(variant) === targetColor
+    );
+    if (exact) return exact;
+  }
+
+  if (targetMeasure) {
+    const byMeasure = variants.find(
+      (variant) => variantMeasureKey(variant) === targetMeasure
+    );
+    if (byMeasure) return byMeasure;
+  }
+
+  if (targetColor) {
+    const byColor = variants.find(
+      (variant) => variantColorKey(variant) === targetColor
+    );
+    if (byColor) return byColor;
+  }
+
+  return currentVariant || variants[0] || null;
+}
+
+function resolveCartItemVariant(
+  item: CartVariantMeta,
+  variants: VariantOption[]
+): VariantOption | null {
+  if (!variants.length) return null;
+
+  if (item.selectedVariantId) {
+    const byId = variants.find((v) => String(v._id) === String(item.selectedVariantId));
+    if (byId) return byId;
+  }
+
+  if (item.selectedSku) {
+    const skuNorm = normalizeText(item.selectedSku);
+    const bySku = variants.find((v) => normalizeText(v.stock?.sku) === skuNorm);
+    if (bySku) return bySku;
+  }
+
+  if (item.selectedMeasure || item.selectedColor) {
+    const measureNorm = normalizeText(item.selectedMeasure);
+    const colorNorm = normalizeText(item.selectedColor);
+    const measureSlug = slugifyText(item.selectedMeasure);
+    const colorSlug = slugifyText(item.selectedColor);
+    const byLabels = variants.find((v) => {
+      const sameMeasure =
+        !measureNorm ||
+        normalizeText(v.measure) === measureNorm ||
+        slugifyText(v.measure) === measureSlug ||
+        normalizeText(v.measureSlug) === measureSlug;
+      const sameColor =
+        !colorNorm ||
+        normalizeText(v.color?.name) === colorNorm ||
+        slugifyText(v.color?.name) === colorSlug ||
+        normalizeText(v.colorSlug) === colorSlug;
+      return sameMeasure && sameColor;
+    });
+    if (byLabels) return byLabels;
+  }
+
+  return variants[0] || null;
+}
 
 function normalizeMobile(input: string) {
   const s = String(input || "").replace(/\s+/g, "");
@@ -62,7 +269,7 @@ const RECAPTCHA_MIN_SCORE = 0.5;
 // ---------------------------
 const CartPageContent: React.FC = () => {
   const navigate = useNavigate();
-  const { cart, removeFromCart, updateQuantity, clearCart } = useCart();
+  const { cart, addToCart, removeFromCart, updateQuantity, clearCart } = useCart();
   const { user, token } = useAuth();
   const { locale } = useLanguage();
 
@@ -77,6 +284,9 @@ const CartPageContent: React.FC = () => {
 
   const [preview, setPreview] = useState<DiscountPreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [variantsByProduct, setVariantsByProduct] = useState<
+    Record<string, VariantOption[]>
+  >({});
 
   // v3 hook
   const { executeRecaptcha } = useGoogleReCaptcha();
@@ -84,6 +294,109 @@ const CartPageContent: React.FC = () => {
   // Checkbox السياسات
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [policyError, setPolicyError] = useState<string | null>(null);
+
+  const productIdsKey = useMemo(() => {
+    const ids = Array.from(new Set(cart.map((item) => String(item._id))));
+    ids.sort();
+    return ids.join("|");
+  }, [cart]);
+
+  useEffect(() => {
+    const productIds = productIdsKey ? productIdsKey.split("|") : [];
+    if (!productIds.length) {
+      setVariantsByProduct({});
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        productIds.map(async (productId) => {
+          try {
+            const { data } = await api.get("/variants", {
+              params: { product: productId, limit: 500 },
+            });
+            return [productId, normalizeVariantsResponse(data)] as const;
+          } catch {
+            return [productId, []] as const;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setVariantsByProduct(Object.fromEntries(entries));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productIdsKey]);
+
+  const changeItemVariant = useCallback(
+    (
+      item: {
+        _id: string;
+        name: any;
+        price: number;
+        image: string;
+        quantity: number;
+      } & CartVariantMeta,
+      nextVariantId: string
+    ) => {
+      const variants = variantsByProduct[item._id] || [];
+      const nextVariant = variants.find((v) => String(v._id) === nextVariantId);
+      if (!nextVariant) return;
+
+      const maxQty = getVariantMaxQty(nextVariant);
+      if (maxQty <= 0) return;
+      const nextQty = Math.max(1, Math.min(item.quantity, maxQty));
+
+      const nextImage =
+        Array.isArray(nextVariant.color?.images) &&
+        nextVariant.color.images.length > 0
+          ? nextVariant.color.images[0]
+          : item.image;
+
+      removeFromCart(item._id, item.selectedColor, item.selectedMeasure);
+      addToCart(
+        {
+          ...(item as any),
+          image: nextImage,
+          price: computeVariantUnitPrice(nextVariant),
+          selectedVariantId: nextVariant._id,
+          selectedSku: nextVariant.stock?.sku || undefined,
+          selectedColor: nextVariant.color?.name || "",
+          selectedMeasure: nextVariant.measure || "",
+          selectedMeasureUnit: nextVariant.measureUnit || undefined,
+          trackQuantity: nextVariant.trackQuantity === true,
+        },
+        nextQty
+      );
+    },
+    [addToCart, removeFromCart, variantsByProduct]
+  );
+
+  const changeItemQuantity = useCallback(
+    (
+      item: {
+        _id: string;
+        quantity: number;
+      } & CartVariantMeta,
+      nextQty: number
+    ) => {
+      const variants = variantsByProduct[item._id] || [];
+      const currentVariant = resolveCartItemVariant(item, variants);
+      const maxQty = getVariantMaxQty(currentVariant);
+      const clamped = Math.max(1, Math.min(MAX_ORDER_QTY, Math.min(nextQty, maxQty)));
+      updateQuantity(
+        item._id,
+        clamped,
+        item.selectedColor,
+        item.selectedMeasure
+      );
+    },
+    [updateQuantity, variantsByProduct]
+  );
 
   useEffect(() => {
     if (user) {
@@ -114,7 +427,8 @@ const CartPageContent: React.FC = () => {
           items: cart.map((item) => ({
             productId: item._id,
             quantity: item.quantity,
-            sku: (item as any).sku || undefined,
+            variantId: (item as any).selectedVariantId || undefined,
+            sku: (item as any).selectedSku || (item as any).sku || undefined,
             color: (item as any).selectedColor || null,
             measure: (item as any).selectedMeasure || null,
             name: getLocalizedText(item.name, locale),
@@ -210,7 +524,8 @@ const CartPageContent: React.FC = () => {
             productId: it._id,
             name: getLocalizedText(it.name, locale),
             quantity: it.quantity,
-            sku: (it as any).sku || undefined,
+            variantId: (it as any).selectedVariantId || undefined,
+            sku: (it as any).selectedSku || (it as any).sku || undefined,
             color: (it as any).selectedColor || null,
             measure: (it as any).selectedMeasure || null,
           })),
@@ -270,7 +585,8 @@ const CartPageContent: React.FC = () => {
             productId: it._id,
             name: getLocalizedText(it.name, locale),
             quantity: it.quantity,
-            sku: (it as any).sku || undefined,
+            variantId: (it as any).selectedVariantId || undefined,
+            sku: (it as any).selectedSku || (it as any).sku || undefined,
             color: (it as any).selectedColor || null,
             measure: (it as any).selectedMeasure || null,
           })),
@@ -392,8 +708,7 @@ const CartPageContent: React.FC = () => {
             <thead className="bg-gray-100 dark:bg-black dark:text-white">
               <tr>
                 <th className="py-2 px-4 border">المنتج</th>
-                <th className="py-2 px-4 border">اللون</th>
-                <th className="py-2 px-4 border">المقاس</th>
+                <th className="py-2 px-4 border">الاختيار</th>
                 <th className="py-2 px-4 border">السعر</th>
                 <th className="py-2 px-4 border">الكمية</th>
                 <th className="py-2 px-4 border">الإجمالي الفرعي</th>
@@ -401,91 +716,202 @@ const CartPageContent: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {cart.map((item) => {
-                const displayName =
-                  getLocalizedText(item.name, locale) || item._id;
+              {cart.map((rawItem) => {
+                const item = rawItem as typeof rawItem & CartVariantMeta;
+                const displayName = getLocalizedText(item.name, locale) || item._id;
+                const variants = variantsByProduct[item._id] || [];
+                const currentVariant = resolveCartItemVariant(item, variants);
+                const measureOptions = getMeasureOptions(variants);
+                const colorOptions = getColorOptions(variants);
+                const selectedMeasureKey =
+                  variantMeasureKey(currentVariant) ||
+                  normalizeText(slugifyText(item.selectedMeasure));
+                const selectedColorKey =
+                  variantColorKey(currentVariant) ||
+                  normalizeText(slugifyText(item.selectedColor));
+                const hasMeasureSelector = measureOptions.length > 1;
+                const hasColorSelector = colorOptions.length > 1;
+                const selectedVariantId =
+                  currentVariant?._id || item.selectedVariantId || variants[0]?._id || "";
+                const maxQty = getVariantMaxQty(currentVariant);
+                const canIncrease = item.quantity < maxQty;
+                const isTracked = currentVariant?.trackQuantity === true;
+                const available = isTracked
+                  ? Math.max(0, Number(currentVariant?.stock?.inStock || 0))
+                  : null;
+
                 return (
                   <tr
-                    key={`${item._id}-${(item as any).selectedColor}-${
-                      (item as any).selectedMeasure
-                    }`}
+                    key={`${item._id}-${item.selectedVariantId || item.selectedColor || ""}-${item.selectedMeasure || ""}`}
                   >
-                    <td className="py-2 px-4 border">{displayName}</td>
-                  <td className="py-2 px-4 border">
-                    {(item as any).selectedColor || "-"}
-                  </td>
-                  <td className="py-2 px-4 border">
-                    {(item as any).selectedMeasure || "-"}
-                  </td>
-                  <td className="py-2 px-4 border">{currency(item.price)}</td>
-                  <td className="py-2 px-4 border">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="px-2 py-1 border rounded"
-                        onClick={() =>
-                          updateQuantity(
-                            item._id,
-                            item.quantity - 1,
-                            (item as any).selectedColor,
-                            (item as any).selectedMeasure
-                          )
-                        }
-                        disabled={item.quantity <= 1}
-                      >
-                        -
-                      </button>
+                    <td className="py-2 px-4 border align-top">
+                      <div className="font-medium">{displayName}</div>
+                    </td>
+                    <td className="py-2 px-4 border align-top min-w-[320px]">
+                      {variants.length > 0 && (hasMeasureSelector || hasColorSelector) ? (
+                        <div className="space-y-2">
+                          {hasMeasureSelector && (
+                            <div className="rounded-md border border-[#E2E6EA] bg-[#F5F7F9] p-2">
+                              <label className="mb-1 block text-xs font-medium text-gray-600">
+                                المقاس
+                              </label>
+                              <select
+                                className="w-full rounded border border-[#D8DDE3] bg-[#F5F7F9] px-2 py-1.5 text-sm"
+                                value={selectedMeasureKey}
+                                onChange={(event) => {
+                                  const nextVariant = findVariantBySelections(
+                                    variants,
+                                    currentVariant,
+                                    {
+                                      measureKey: event.target.value,
+                                      colorKey: selectedColorKey,
+                                    }
+                                  );
+                                  if (
+                                    nextVariant &&
+                                    String(nextVariant._id) !== String(selectedVariantId)
+                                  ) {
+                                    changeItemVariant(item, nextVariant._id);
+                                  }
+                                }}
+                              >
+                                {measureOptions.map((option) => {
+                                  const available = variants.some(
+                                    (variant) =>
+                                      variantMeasureKey(variant) === option.key &&
+                                      getVariantMaxQty(variant) > 0
+                                  );
+                                  return (
+                                    <option
+                                      key={option.key}
+                                      value={option.key}
+                                      disabled={!available && option.key !== selectedMeasureKey}
+                                    >
+                                      {option.label}
+                                      {!available ? " - غير متوفر" : ""}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                          )}
 
-                      <QuantityInput
-                        quantity={item.quantity}
-                        onChange={(newQty) =>
-                          updateQuantity(
-                            item._id,
-                            newQty,
-                            (item as any).selectedColor,
-                            (item as any).selectedMeasure
-                          )
-                        }
-                      />
-
-                      <button
-                        className="px-2 py-1 border rounded"
+                          {hasColorSelector && (
+                            <div className="rounded-md border border-[#E2E6EA] bg-[#F5F7F9] p-2">
+                              <label className="mb-1 block text-xs font-medium text-gray-600">
+                                اللون
+                              </label>
+                              <select
+                                className="w-full rounded border border-[#D8DDE3] bg-[#F5F7F9] px-2 py-1.5 text-sm"
+                                value={selectedColorKey}
+                                onChange={(event) => {
+                                  const nextVariant = findVariantBySelections(
+                                    variants,
+                                    currentVariant,
+                                    {
+                                      measureKey: selectedMeasureKey,
+                                      colorKey: event.target.value,
+                                    }
+                                  );
+                                  if (
+                                    nextVariant &&
+                                    String(nextVariant._id) !== String(selectedVariantId)
+                                  ) {
+                                    changeItemVariant(item, nextVariant._id);
+                                  }
+                                }}
+                              >
+                                {colorOptions.map((option) => {
+                                  const compatible = variants.filter(
+                                    (variant) =>
+                                      variantColorKey(variant) === option.key &&
+                                      (!selectedMeasureKey ||
+                                        variantMeasureKey(variant) === selectedMeasureKey)
+                                  );
+                                  const available = compatible.some(
+                                    (variant) => getVariantMaxQty(variant) > 0
+                                  );
+                                  return (
+                                    <option
+                                      key={option.key}
+                                      value={option.key}
+                                      disabled={
+                                        compatible.length === 0 ||
+                                        (!available && option.key !== selectedColorKey)
+                                      }
+                                    >
+                                      {option.label}
+                                      {compatible.length === 0
+                                        ? " - غير متوافق"
+                                        : !available
+                                        ? " - غير متوفر"
+                                        : ""}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-500">
+                          {(item.selectedMeasure || "-") +
+                            (item.selectedColor ? ` - ${item.selectedColor}` : "")}
+                        </span>
+                      )}
+                      {isTracked && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          المتاح: {available}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-2 px-4 border align-top">{currency(item.price)}</td>
+                    <td className="py-2 px-4 border align-top">
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="px-2 py-1 border rounded"
+                          onClick={() => changeItemQuantity(item, item.quantity - 1)}
+                          disabled={item.quantity <= 1}
+                        >
+                          -
+                        </button>
+                        <QuantityInput
+                          quantity={item.quantity}
+                          onChange={(newQty) => changeItemQuantity(item, newQty)}
+                        />
+                        <button
+                          className="px-2 py-1 border rounded disabled:opacity-50"
+                          onClick={() => changeItemQuantity(item, item.quantity + 1)}
+                          disabled={!canIncrease}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </td>
+                    <td className="py-2 px-4 border align-top">
+                      {currency(item.price * item.quantity)}
+                    </td>
+                    <td className="py-2 px-4 border align-top">
+                      <Button
+                        variant="destructive"
+                        size="sm"
                         onClick={() =>
-                          updateQuantity(
+                          removeFromCart(
                             item._id,
-                            item.quantity + 1,
-                            (item as any).selectedColor,
-                            (item as any).selectedMeasure
+                            item.selectedColor,
+                            item.selectedMeasure
                           )
                         }
                       >
-                        +
-                      </button>
-                    </div>
-                  </td>
-                  <td className="py-2 px-4 border">
-                    {currency(item.price * item.quantity)}
-                  </td>
-                  <td className="py-2 px-4 border">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() =>
-                        removeFromCart(
-                          item._id,
-                          (item as any).selectedColor,
-                          (item as any).selectedMeasure
-                        )
-                      }
-                    >
-                      إزالة
-                    </Button>
-                  </td>
-                </tr>
-              );
+                        إزالة
+                      </Button>
+                    </td>
+                  </tr>
+                );
               })}
               {cart.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-4 text-center text-gray-500">
+                  <td colSpan={6} className="py-4 text-center text-gray-500">
                     السلة فارغة.
                   </td>
                 </tr>
@@ -496,38 +922,169 @@ const CartPageContent: React.FC = () => {
 
         {/* 📱 للموبايل: كروت العناصر */}
         <div className="grid gap-4 md:hidden">
-          {cart.map((item) => {
-            const displayName =
-              getLocalizedText(item.name, locale) || item._id;
+          {cart.map((rawItem) => {
+            const item = rawItem as typeof rawItem & CartVariantMeta;
+            const displayName = getLocalizedText(item.name, locale) || item._id;
+            const variants = variantsByProduct[item._id] || [];
+            const currentVariant = resolveCartItemVariant(item, variants);
+            const measureOptions = getMeasureOptions(variants);
+            const colorOptions = getColorOptions(variants);
+            const selectedMeasureKey =
+              variantMeasureKey(currentVariant) ||
+              normalizeText(slugifyText(item.selectedMeasure));
+            const selectedColorKey =
+              variantColorKey(currentVariant) ||
+              normalizeText(slugifyText(item.selectedColor));
+            const hasMeasureSelector = measureOptions.length > 1;
+            const hasColorSelector = colorOptions.length > 1;
+            const selectedVariantId =
+              currentVariant?._id || item.selectedVariantId || variants[0]?._id || "";
+            const maxQty = getVariantMaxQty(currentVariant);
+            const isTracked = currentVariant?.trackQuantity === true;
+            const available = isTracked
+              ? Math.max(0, Number(currentVariant?.stock?.inStock || 0))
+              : null;
+
             return (
               <div
-                key={`${item._id}-${(item as any).selectedColor}-${
-                  (item as any).selectedMeasure
-                }`}
+                key={`${item._id}-${item.selectedVariantId || item.selectedColor || ""}-${item.selectedMeasure || ""}`}
                 className="border rounded-lg p-4 text-right"
               >
                 <h3 className="text-lg font-semibold mb-1">{displayName}</h3>
-                <p className="text-sm text-gray-500">
-                  اللون: {(item as any).selectedColor || "-"} | المقاس:{" "}
-                  {(item as any).selectedMeasure || "-"}
-                </p>
-                <p className="text-gray-600 mb-1">
-                  السعر: {currency(item.price)}
-                </p>
+                <p className="text-gray-600 mb-2">السعر: {currency(item.price)}</p>
+
+                <div className="mb-2 space-y-2">
+                  {variants.length > 0 && hasMeasureSelector && (
+                    <div className="rounded-md border border-[#E2E6EA] bg-[#F5F7F9] p-2">
+                      <label className="mb-1 block text-xs font-medium text-gray-600">
+                        المقاس
+                      </label>
+                      <select
+                        className="w-full rounded border border-[#D8DDE3] bg-[#F5F7F9] px-2 py-1.5 text-sm"
+                        value={selectedMeasureKey}
+                        onChange={(event) => {
+                          const nextVariant = findVariantBySelections(
+                            variants,
+                            currentVariant,
+                            {
+                              measureKey: event.target.value,
+                              colorKey: selectedColorKey,
+                            }
+                          );
+                          if (
+                            nextVariant &&
+                            String(nextVariant._id) !== String(selectedVariantId)
+                          ) {
+                            changeItemVariant(item, nextVariant._id);
+                          }
+                        }}
+                      >
+                        {measureOptions.map((option) => {
+                          const available = variants.some(
+                            (variant) =>
+                              variantMeasureKey(variant) === option.key &&
+                              getVariantMaxQty(variant) > 0
+                          );
+                          return (
+                            <option
+                              key={option.key}
+                              value={option.key}
+                              disabled={!available && option.key !== selectedMeasureKey}
+                            >
+                              {option.label}
+                              {!available ? " - غير متوفر" : ""}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
+
+                  {variants.length > 0 && hasColorSelector && (
+                    <div className="rounded-md border border-[#E2E6EA] bg-[#F5F7F9] p-2">
+                      <label className="mb-1 block text-xs font-medium text-gray-600">
+                        اللون
+                      </label>
+                      <select
+                        className="w-full rounded border border-[#D8DDE3] bg-[#F5F7F9] px-2 py-1.5 text-sm"
+                        value={selectedColorKey}
+                        onChange={(event) => {
+                          const nextVariant = findVariantBySelections(
+                            variants,
+                            currentVariant,
+                            {
+                              measureKey: selectedMeasureKey,
+                              colorKey: event.target.value,
+                            }
+                          );
+                          if (
+                            nextVariant &&
+                            String(nextVariant._id) !== String(selectedVariantId)
+                          ) {
+                            changeItemVariant(item, nextVariant._id);
+                          }
+                        }}
+                      >
+                        {colorOptions.map((option) => {
+                          const compatible = variants.filter(
+                            (variant) =>
+                              variantColorKey(variant) === option.key &&
+                              (!selectedMeasureKey ||
+                                variantMeasureKey(variant) === selectedMeasureKey)
+                          );
+                          const available = compatible.some(
+                            (variant) => getVariantMaxQty(variant) > 0
+                          );
+                          return (
+                            <option
+                              key={option.key}
+                              value={option.key}
+                              disabled={
+                                compatible.length === 0 ||
+                                (!available && option.key !== selectedColorKey)
+                              }
+                            >
+                              {option.label}
+                              {compatible.length === 0
+                                ? " - غير متوافق"
+                                : !available
+                                ? " - غير متوفر"
+                                : ""}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
+
+                  {variants.length === 0 || (!hasMeasureSelector && !hasColorSelector) ? (
+                    <p className="text-sm text-gray-500">
+                      {(item.selectedMeasure || "-") +
+                        (item.selectedColor ? ` - ${item.selectedColor}` : "")}
+                    </p>
+                  ) : (
+                    null
+                  )}
+                  {isTracked && (
+                    <p className="mt-1 text-xs text-gray-500">المتاح: {available}</p>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-gray-600">الكمية:</span>
                   <QuantityInput
                     quantity={item.quantity}
-                    onChange={(newQty) =>
-                      updateQuantity(
-                        item._id,
-                        newQty,
-                        (item as any).selectedColor,
-                        (item as any).selectedMeasure
-                      )
-                    }
+                    onChange={(newQty) => changeItemQuantity(item, newQty)}
                   />
+                  <button
+                    className="px-2 py-1 border rounded disabled:opacity-50"
+                    onClick={() => changeItemQuantity(item, item.quantity + 1)}
+                    disabled={item.quantity >= maxQty}
+                  >
+                    +
+                  </button>
                 </div>
+
                 <p className="text-gray-700 font-semibold mb-3">
                   الإجمالي: {currency(item.price * item.quantity)}
                 </p>
@@ -537,8 +1094,8 @@ const CartPageContent: React.FC = () => {
                   onClick={() =>
                     removeFromCart(
                       item._id,
-                      (item as any).selectedColor,
-                      (item as any).selectedMeasure
+                      item.selectedColor,
+                      item.selectedMeasure
                     )
                   }
                 >
