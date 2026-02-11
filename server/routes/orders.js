@@ -23,6 +23,7 @@ const {
   mapLocalizedForResponse,
 } = require("../utils/localized");
 const { queueOrderSummarySMS } = require("../utils/orderSms");
+const { queueOrderAlertEmail } = require("../utils/orderEmail");
 const { issuePaymentToken } = require("../utils/paymentTokens");
 const DEFAULT_RECAPTCHA_ACTION = "checkout";
 const ENV_MIN_SCORE = Number(process.env.RECAPTCHA_MIN_SCORE);
@@ -692,6 +693,7 @@ router.post(
       order: doc,
       cardType: "الدفع عند الاستلام",
     });
+    queueOrderAlertEmail({ order: doc });
 
     return res.status(201).json(doc);
   } catch (err) {
@@ -887,6 +889,7 @@ router.post(
       reference: null,
       notes: isNonEmpty(notes) ? String(notes).trim() : "",
     });
+    queueOrderAlertEmail({ order: doc });
 
     const paymentToken = issuePaymentToken(doc._id);
 
