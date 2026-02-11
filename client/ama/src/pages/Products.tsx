@@ -13,6 +13,7 @@ import {
   getLocalizedText,
   ensureLocalizedObject,
   type LocalizedText,
+  type LocalizedObject,
 } from "@/lib/localized";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTranslation } from "@/i18n";
@@ -46,6 +47,14 @@ type ProductItem = {
   totalStock?: number;
   price: number;
   quantity: number;
+};
+
+type SuggestionItem = {
+  _id: string;
+  name: LocalizedObject;
+  image?: string | null;
+  price?: number | null;
+  comparePrice?: number | null;
 };
 
 type CategoryGroup = { mainCategory: string; subCategories: string[] };
@@ -181,7 +190,7 @@ const Products: React.FC = () => {
     Record<string, string>
   >({});
 
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState<number>(-1);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -532,16 +541,35 @@ const Products: React.FC = () => {
       const params: Record<string, string> = { q: term, limit: "8" };
       const res = await api.get("/products/suggest", { params });
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
-      const names = Array.from(
-        new Set(
-          items
-            .map((p: any) => getLocalizedText(p?.name, locale))
-            .filter(
-              (n: string | undefined) => typeof n === "string" && n.trim()
-            )
-        )
-      ) as string[];
-      setSuggestions(names);
+      const parsed: SuggestionItem[] = items
+        .map((item: any): SuggestionItem | null => {
+          const normalizedName = ensureLocalizedObject(item?.name);
+          const label =
+            getLocalizedText(normalizedName, locale) ||
+            normalizedName.ar ||
+            normalizedName.he;
+          if (!label) return null;
+          return {
+            _id: String(item?._id || ""),
+            name: normalizedName,
+            image:
+              typeof item?.image === "string" && item.image.trim()
+                ? item.image
+                : null,
+            price:
+              typeof item?.price === "number" && Number.isFinite(item.price)
+                ? item.price
+                : null,
+            comparePrice:
+              typeof item?.comparePrice === "number" &&
+              Number.isFinite(item.comparePrice)
+                ? item.comparePrice
+                : null,
+          };
+        })
+        .filter((item: SuggestionItem | null): item is SuggestionItem => !!item);
+
+      setSuggestions(parsed);
       setShowSuggestions(true);
       setHighlightIndex(-1);
     } catch (err) {
@@ -653,6 +681,12 @@ const Products: React.FC = () => {
     setSuggestionsQuery("");
   };
 
+  const getSuggestionLabel = useCallback(
+    (item: SuggestionItem) =>
+      getLocalizedText(item.name, locale) || item.name.ar || item.name.he || "",
+    [locale]
+  );
+
   const renderHighlighted = (text: string) => {
     if (!suggestionsQuery) return text;
     const source = text.toLowerCase();
@@ -690,7 +724,12 @@ const Products: React.FC = () => {
       if (showSuggestions && highlightIndex >= 0) {
         const chosen = suggestions[highlightIndex];
         if (chosen) {
-          triggerSearch(chosen);
+          const label = getSuggestionLabel(chosen);
+          if (label) {
+            triggerSearch(label);
+            return;
+          }
+          triggerSearch();
           return;
         }
       }
@@ -853,20 +892,51 @@ const Products: React.FC = () => {
                   ) : (
                     suggestions.map((s, idx) => (
                       <li
-                        key={`${s}-${idx}`}
+                        key={s._id || `suggestion-${idx}`}
                         role="option"
                         aria-selected={idx === highlightIndex}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          triggerSearch(s);
+                          const label = getSuggestionLabel(s);
+                          if (label) triggerSearch(label);
                         }}
-                        className={`px-3 py-2 cursor-pointer transition-colors ${
+                        className={`px-3 py-2.5 cursor-pointer transition-colors ${
                           idx === highlightIndex
                             ? "bg-amber-100"
                             : "hover:bg-amber-50"
                         }`}
                       >
-                        {renderHighlighted(s)}
+                        <div className="flex items-center gap-3">
+                          <div className="min-w-0 flex-1 text-right">
+                            <p className="truncate text-sm font-medium text-foreground">
+                              {renderHighlighted(getSuggestionLabel(s))}
+                            </p>
+                            {typeof s.price === "number" && (
+                              <div className="mt-0.5 flex items-baseline justify-end gap-2 text-xs">
+                                {typeof s.comparePrice === "number" &&
+                                  s.comparePrice > s.price && (
+                                    <span className="text-muted-foreground line-through">
+                                      ₪{s.comparePrice}
+                                    </span>
+                                  )}
+                                <span className="font-semibold text-foreground">
+                                  ₪{s.price}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {s.image ? (
+                            <img
+                              src={s.image}
+                              alt={getSuggestionLabel(s)}
+                              loading="lazy"
+                              className="h-12 w-12 shrink-0 rounded-md border border-border object-cover bg-[#F5F7F9]"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 shrink-0 rounded-md border border-border bg-[#F5F7F9]" />
+                          )}
+                        </div>
                       </li>
                     ))
                   )}

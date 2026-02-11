@@ -74,6 +74,43 @@ function buildSearchMatch(q) {
   return { $and: clauses };
 }
 
+function toFiniteAmount(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Number(value.toFixed(2));
+}
+
+function computeVariantDisplayPrice(variant, now = new Date()) {
+  const amount = Number(variant?.price?.amount);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { final: null, compare: null };
+  }
+
+  const discount = variant?.price?.discount || {};
+  const discountValue = Number(discount.value || 0);
+  const startAt = discount.startAt ? new Date(discount.startAt) : null;
+  const endAt = discount.endAt ? new Date(discount.endAt) : null;
+
+  const isDiscountActive =
+    discountValue > 0 &&
+    (!startAt || startAt <= now) &&
+    (!endAt || endAt >= now);
+
+  let final = amount;
+  if (isDiscountActive) {
+    if (discount.type === "amount") {
+      final = Math.max(0, amount - discountValue);
+    } else {
+      final = Math.max(0, amount - (amount * discountValue) / 100);
+    }
+  }
+
+  const compareAt = Number(variant?.price?.compareAt);
+  const compareCandidate = Number.isFinite(compareAt) ? compareAt : amount;
+  const compare = compareCandidate > final ? compareCandidate : null;
+
+  return { final: toFiniteAmount(final), compare: toFiniteAmount(compare) };
+}
+
 function parseBooleanInput(value) {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value === 1 ? true : value === 0 ? false : null;
@@ -601,15 +638,52 @@ const ProductsController = {
       const filter = { ...ownershipFilter, ...(searchMatch || {}) };
       applyVisibilityFilter(filter, includeHidden);
 
-      const items = await Product.find(filter, { name: 1 })
+      const items = await Product.find(filter, { name: 1, images: 1, price: 1 })
         .sort({ priority: 1, createdAt: -1 })
         .limit(limitNum)
         .lean();
+
+      const productIds = items.map((item) => item._id);
+      const variants = productIds.length
+        ? await Variant.find(
+            { product: { $in: productIds } },
+            {
+              product: 1,
+              "price.amount": 1,
+              "price.compareAt": 1,
+              "price.discount": 1,
+            }
+          ).lean()
+        : [];
+
+      const now = new Date();
+      const minPriceByProduct = new Map();
+      for (const variant of variants) {
+        const productId = String(variant.product || "");
+        if (!productId) continue;
+
+        const price = computeVariantDisplayPrice(variant, now);
+        if (price.final === null) continue;
+
+        const current = minPriceByProduct.get(productId);
+        if (!current || price.final < current.price) {
+          minPriceByProduct.set(productId, {
+            price: price.final,
+            comparePrice: price.compare,
+          });
+        }
+      }
 
       return res.json({
         items: (items || []).map((p) => ({
           _id: p._id,
           name: mapLocalizedForResponse(p.name),
+          image: Array.isArray(p.images) ? p.images[0] || null : null,
+          price:
+            minPriceByProduct.get(String(p._id))?.price ??
+            toFiniteAmount(p.price),
+          comparePrice:
+            minPriceByProduct.get(String(p._id))?.comparePrice ?? null,
         })),
       });
     } catch (err) {
