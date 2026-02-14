@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -27,10 +27,36 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
   orders,
   token,
 }) => {
-  if (!selectedOrder) return null;
-
   const { t } = useTranslation();
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<
+    "unpaid" | "paid" | "failed"
+  >("unpaid");
+  const [bankTransferStatus, setBankTransferStatus] = useState<
+    "pending_contact" | "instructions_sent" | "transfer_received" | "verified"
+  >("pending_contact");
+  const [paymentStatusNote, setPaymentStatusNote] = useState("");
+
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const nextPaymentStatus =
+      selectedOrder.paymentStatus === "paid" || selectedOrder.paymentStatus === "failed"
+        ? selectedOrder.paymentStatus
+        : "unpaid";
+    setPaymentStatus(nextPaymentStatus);
+
+    const nextBankStatus =
+      selectedOrder.bankTransferStatus === "instructions_sent" ||
+      selectedOrder.bankTransferStatus === "transfer_received" ||
+      selectedOrder.bankTransferStatus === "verified"
+        ? selectedOrder.bankTransferStatus
+        : "pending_contact";
+    setBankTransferStatus(nextBankStatus);
+    setPaymentStatusNote(selectedOrder.paymentStatusNote || "");
+  }, [selectedOrder]);
+
+  if (!selectedOrder) return null;
 
   const handleDelete = async () => {
     const confirmDelete = confirm(t("admin.orderDetails.confirmDelete"));
@@ -100,9 +126,53 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
     }
   };
 
+  const handleSavePayment = async () => {
+    if (!selectedOrder?._id || !token) return;
+
+    try {
+      setSavingPayment(true);
+      const payload: Record<string, string> = {
+        paymentStatus,
+        paymentStatusNote: paymentStatusNote.trim(),
+      };
+
+      if (selectedOrder?.paymentMethod === "bank_transfer") {
+        payload.bankTransferStatus = bankTransferStatus;
+      }
+
+      const { data } = await api.patch(
+        `/orders/${selectedOrder._id}/payment`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const patched = data;
+      if (patched && patched._id) {
+        const merged = orders.map((o) =>
+          o._id === patched._id ? { ...o, ...patched } : o
+        );
+        setOrders(merged);
+        setSelectedOrder(patched);
+      }
+
+      alert(t("admin.orderDetails.payment.alerts.updateSuccess"));
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        t("admin.orderDetails.payment.alerts.updateFailed");
+      alert(msg);
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
   return (
     <Dialog open={!!selectedOrder} onOpenChange={() => setSelectedOrder(null)}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("admin.orderDetails.title")}</DialogTitle>
           <DialogDescription>
@@ -114,6 +184,96 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
 
         {/* يعرض: المنتجات مع اللون/المقاس/الكمية/السعر بناءً على المكوّن المشترك */}
         <OrderDetailsContent order={selectedOrder} />
+
+        <div className="rounded-lg border p-3 space-y-3">
+          <h4 className="font-semibold">
+            {t("admin.orderDetails.payment.title")}
+          </h4>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm">
+                {t("admin.orderDetails.payment.labels.paymentStatus")}
+              </label>
+              <select
+                className="w-full rounded border px-2 py-2 text-sm"
+                value={paymentStatus}
+                onChange={(e) =>
+                  setPaymentStatus(
+                    e.target.value as "unpaid" | "paid" | "failed"
+                  )
+                }
+              >
+                <option value="unpaid">
+                  {t("admin.orderDetails.payment.status.unpaid")}
+                </option>
+                <option value="paid">
+                  {t("admin.orderDetails.payment.status.paid")}
+                </option>
+                <option value="failed">
+                  {t("admin.orderDetails.payment.status.failed")}
+                </option>
+              </select>
+            </div>
+
+            {selectedOrder?.paymentMethod === "bank_transfer" && (
+              <div>
+                <label className="mb-1 block text-sm">
+                  {t("admin.orderDetails.payment.labels.bankTransferStatus")}
+                </label>
+                <select
+                  className="w-full rounded border px-2 py-2 text-sm"
+                  value={bankTransferStatus}
+                  onChange={(e) =>
+                    setBankTransferStatus(
+                      e.target.value as
+                        | "pending_contact"
+                        | "instructions_sent"
+                        | "transfer_received"
+                        | "verified"
+                    )
+                  }
+                >
+                  <option value="pending_contact">
+                    {t("admin.orders.bankTransferStatus.pending_contact")}
+                  </option>
+                  <option value="instructions_sent">
+                    {t("admin.orders.bankTransferStatus.instructions_sent")}
+                  </option>
+                  <option value="transfer_received">
+                    {t("admin.orders.bankTransferStatus.transfer_received")}
+                  </option>
+                  <option value="verified">
+                    {t("admin.orders.bankTransferStatus.verified")}
+                  </option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm">
+              {t("admin.orderDetails.payment.labels.note")}
+            </label>
+            <textarea
+              value={paymentStatusNote}
+              onChange={(e) => setPaymentStatusNote(e.target.value)}
+              className="w-full rounded border px-2 py-2 text-sm"
+              rows={3}
+              placeholder={t("admin.orderDetails.payment.placeholders.note")}
+            />
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleSavePayment}
+            disabled={savingPayment}
+          >
+            {savingPayment
+              ? t("admin.orderDetails.payment.actions.saving")
+              : t("admin.orderDetails.payment.actions.save")}
+          </Button>
+        </div>
 
         <div className="flex items-center justify-between mt-4">
           <Button size="sm" variant="destructive" onClick={handleDelete}>

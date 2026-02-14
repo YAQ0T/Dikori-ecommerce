@@ -51,6 +51,16 @@ type SubCategoryItem = {
   prevValue?: string;
 };
 
+type TestimonialItem = {
+  name: Localized;
+  role: Localized;
+  quote: Localized;
+  imageUrl: string;
+  rating: number;
+  order?: number;
+  isActive: boolean;
+};
+
 type SiteSettings = {
   seeded?: boolean;
   hero?: Partial<HeroState>;
@@ -59,6 +69,8 @@ type SiteSettings = {
     main?: CategoryItem[];
     sub?: SubCategoryItem[];
   };
+  testimonialsTitle?: Localized;
+  testimonials?: TestimonialItem[];
 };
 
 const createHeroState = (raw?: Partial<HeroState>): HeroState => ({
@@ -123,6 +135,31 @@ const createEmptySubCategory = (): SubCategoryItem => ({
   prevValue: "",
 });
 
+const normalizeTestimonial = (
+  raw?: Partial<TestimonialItem>
+): TestimonialItem => ({
+  name: ensureLocalizedObject(raw?.name),
+  role: ensureLocalizedObject(raw?.role),
+  quote: ensureLocalizedObject(raw?.quote),
+  imageUrl: raw?.imageUrl || "",
+  rating:
+    typeof raw?.rating === "number" && Number.isFinite(raw.rating)
+      ? Math.max(1, Math.min(5, Math.round(raw.rating)))
+      : 5,
+  order: typeof raw?.order === "number" ? raw.order : 0,
+  isActive: raw?.isActive !== false,
+});
+
+const createEmptyTestimonial = (): TestimonialItem => ({
+  name: { ...emptyLocalized },
+  role: { ...emptyLocalized },
+  quote: { ...emptyLocalized },
+  imageUrl: "",
+  rating: 5,
+  order: 0,
+  isActive: true,
+});
+
 const slugifyLabel = (value: string) =>
   value
     .normalize("NFKD")
@@ -173,6 +210,10 @@ const SiteSettingsEditor: React.FC<{
   const [homeCategories, setHomeCategories] = useState<CategoryItem[]>([]);
   const [menuMain, setMenuMain] = useState<CategoryItem[]>([]);
   const [menuSub, setMenuSub] = useState<SubCategoryItem[]>([]);
+  const [testimonialsTitle, setTestimonialsTitle] = useState<Localized>({
+    ...emptyLocalized,
+  });
+  const [testimonials, setTestimonials] = useState<TestimonialItem[]>([]);
 
   const headers = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : undefined),
@@ -239,6 +280,69 @@ const SiteSettingsEditor: React.FC<{
       imageUrl: item.img || "",
       order: idx,
     }));
+  }, [tAr, tHe]);
+
+  const defaultTestimonialsTitle = useMemo(
+    () => ({
+      ar: tAr("home.testimonialsTitle"),
+      he: tHe("home.testimonialsTitle"),
+    }),
+    [tAr, tHe]
+  );
+
+  const defaultTestimonials = useMemo((): TestimonialItem[] => {
+    const arList = (tAr("home.testimonials", {
+      returnObjects: true,
+    }) || []) as Array<{
+      key?: string;
+      name?: string;
+      role?: string;
+      quote?: string;
+    }>;
+    const heList = (tHe("home.testimonials", {
+      returnObjects: true,
+    }) || []) as Array<{
+      key?: string;
+      name?: string;
+      role?: string;
+      quote?: string;
+    }>;
+
+    const heMap = new Map<
+      string,
+      {
+        name?: string;
+        role?: string;
+        quote?: string;
+      }
+    >();
+    heList.forEach((item, index) => {
+      const key = item.key || `testimonial-${index}`;
+      heMap.set(key, item);
+    });
+
+    return arList.map((item, index) => {
+      const key = item.key || `testimonial-${index}`;
+      const heItem = heMap.get(key);
+      return normalizeTestimonial({
+        name: {
+          ar: item.name || "",
+          he: heItem?.name || "",
+        },
+        role: {
+          ar: item.role || "",
+          he: heItem?.role || "",
+        },
+        quote: {
+          ar: item.quote || "",
+          he: heItem?.quote || "",
+        },
+        imageUrl: "",
+        rating: 5,
+        order: index,
+        isActive: true,
+      });
+    });
   }, [tAr, tHe]);
 
   const menuDefaults = useMemo(() => {
@@ -372,6 +476,24 @@ const SiteSettingsEditor: React.FC<{
             ? menuDefaults.sub.map((item) => normalizeSubCategory(item))
             : subCats
         );
+
+        const titleFromData = ensureLocalizedObject(data.testimonialsTitle);
+        if (!hasSeeded) {
+          setTestimonialsTitle(
+            mergeLocalized(defaultTestimonialsTitle, titleFromData)
+          );
+        } else {
+          setTestimonialsTitle(titleFromData);
+        }
+
+        const incomingTestimonials = Array.isArray(data.testimonials)
+          ? data.testimonials.map((item) => normalizeTestimonial(item))
+          : [];
+        setTestimonials(
+          !hasSeeded && incomingTestimonials.length === 0
+            ? defaultTestimonials.map((item) => normalizeTestimonial(item))
+            : incomingTestimonials
+        );
       })
       .catch((err) => {
         if (!active) return;
@@ -406,6 +528,29 @@ const SiteSettingsEditor: React.FC<{
       setMenuSub(menuDefaults.sub.map((item) => normalizeSubCategory(item)));
     }
   }, [seeded, menuMain.length, menuSub.length, menuDefaults]);
+
+  useEffect(() => {
+    if (seeded) return;
+    if (
+      !testimonialsTitle.ar?.trim() &&
+      !testimonialsTitle.he?.trim() &&
+      (defaultTestimonialsTitle.ar || defaultTestimonialsTitle.he)
+    ) {
+      setTestimonialsTitle({ ...defaultTestimonialsTitle });
+    }
+    if (!testimonials.length && defaultTestimonials.length) {
+      setTestimonials(
+        defaultTestimonials.map((item) => normalizeTestimonial(item))
+      );
+    }
+  }, [
+    seeded,
+    testimonials.length,
+    testimonialsTitle.ar,
+    testimonialsTitle.he,
+    defaultTestimonialsTitle,
+    defaultTestimonials,
+  ]);
 
   const updateHeroText = useCallback(
     (field: HeroLocalizedField, locale: "ar" | "he", value: string) => {
@@ -488,6 +633,42 @@ const SiteSettingsEditor: React.FC<{
     []
   );
 
+  const updateTestimonial = useCallback(
+    (
+      index: number,
+      field: keyof TestimonialItem,
+      value: string | number | boolean
+    ) => {
+      setTestimonials((prev) =>
+        prev.map((item, idx) =>
+          idx === index ? { ...item, [field]: value } : item
+        )
+      );
+    },
+    []
+  );
+
+  const updateTestimonialLocalized = useCallback(
+    (
+      index: number,
+      field: "name" | "role" | "quote",
+      locale: "ar" | "he",
+      value: string
+    ) => {
+      setTestimonials((prev) =>
+        prev.map((item, idx) =>
+          idx === index
+            ? {
+                ...item,
+                [field]: { ...item[field], [locale]: value },
+              }
+            : item
+        )
+      );
+    },
+    []
+  );
+
   const moveItem = useCallback(
     <T,>(
       setter: React.Dispatch<React.SetStateAction<T[]>>,
@@ -538,6 +719,20 @@ const SiteSettingsEditor: React.FC<{
         }))
         .filter((item) => item.main && item.value);
 
+    const cleanTestimonials = (items: TestimonialItem[]) =>
+      items.map((item, idx) => ({
+        name: ensureLocalizedObject(item.name),
+        role: ensureLocalizedObject(item.role),
+        quote: ensureLocalizedObject(item.quote),
+        imageUrl: item.imageUrl.trim(),
+        rating: Math.max(1, Math.min(5, Math.round(Number(item.rating) || 5))),
+        order:
+          typeof item.order === "number" && Number.isFinite(item.order)
+            ? item.order
+            : idx,
+        isActive: item.isActive !== false,
+      }));
+
     const payload: SiteSettings = {
       hero,
       homeCategories: cleanCategories(homeCategories),
@@ -545,6 +740,8 @@ const SiteSettingsEditor: React.FC<{
         main: cleanCategories(menuMain),
         sub: cleanSubCategories(menuSub),
       },
+      testimonialsTitle: ensureLocalizedObject(testimonialsTitle),
+      testimonials: cleanTestimonials(testimonials),
     };
 
     try {
@@ -567,6 +764,19 @@ const SiteSettingsEditor: React.FC<{
           prevValue: item.value.trim(),
         }))
       );
+      setTestimonials((prev) =>
+        prev.map((item, idx) =>
+          normalizeTestimonial({
+            ...item,
+            imageUrl: item.imageUrl.trim(),
+            order:
+              typeof item.order === "number" && Number.isFinite(item.order)
+                ? item.order
+                : idx,
+          })
+        )
+      );
+      setTestimonialsTitle((prev) => ensureLocalizedObject(prev));
       setSuccess("تم حفظ إعدادات الموقع بنجاح ✅");
     } catch (err) {
       console.error("Failed to save site settings", err);
@@ -574,7 +784,16 @@ const SiteSettingsEditor: React.FC<{
     } finally {
       setSaving(false);
     }
-  }, [hero, homeCategories, menuMain, menuSub, token, headers]);
+  }, [
+    hero,
+    homeCategories,
+    menuMain,
+    menuSub,
+    testimonialsTitle,
+    testimonials,
+    token,
+    headers,
+  ]);
 
   const fillDefaultMenuImages = useCallback(() => {
     setMenuMain((prev) =>
@@ -1176,6 +1395,214 @@ const SiteSettingsEditor: React.FC<{
           {!menuSub.length && (
             <p className="text-sm text-muted-foreground">
               لا توجد إعدادات مخصّصة للتصنيفات الفرعية.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border p-4 bg-white dark:bg-gray-900">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold">قسم آراء العملاء</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              يمكن تعديل عنوان القسم ومحتوى آراء العملاء الظاهر في الصفحة الرئيسية.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() =>
+              setTestimonials((prev) => [...prev, createEmptyTestimonial()])
+            }
+          >
+            <Plus className="h-4 w-4 ml-2" />
+            إضافة رأي
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border rounded-xl p-3 mb-4">
+          <div>
+            <label className="text-xs text-muted-foreground">عنوان القسم (AR)</label>
+            <Input
+              value={testimonialsTitle.ar}
+              onChange={(e) =>
+                setTestimonialsTitle((prev) => ({ ...prev, ar: e.target.value }))
+              }
+              placeholder="ماذا يقول عنا عملاؤنا؟"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">عنوان القسم (HE)</label>
+            <Input
+              value={testimonialsTitle.he}
+              onChange={(e) =>
+                setTestimonialsTitle((prev) => ({ ...prev, he: e.target.value }))
+              }
+              placeholder="מה הלקוחות שלנו אומרים?"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {testimonials.map((item, idx) => (
+            <div
+              key={`testimonial-${idx}`}
+              className="grid grid-cols-1 md:grid-cols-12 gap-3 border rounded-xl p-3"
+            >
+              <div className="md:col-span-3">
+                <label className="text-xs text-muted-foreground">الاسم (AR)</label>
+                <Input
+                  value={item.name.ar}
+                  onChange={(e) =>
+                    updateTestimonialLocalized(idx, "name", "ar", e.target.value)
+                  }
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="text-xs text-muted-foreground">الاسم (HE)</label>
+                <Input
+                  value={item.name.he}
+                  onChange={(e) =>
+                    updateTestimonialLocalized(idx, "name", "he", e.target.value)
+                  }
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="text-xs text-muted-foreground">الصفة (AR)</label>
+                <Input
+                  value={item.role.ar}
+                  onChange={(e) =>
+                    updateTestimonialLocalized(idx, "role", "ar", e.target.value)
+                  }
+                  placeholder="نجّار محترف"
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="text-xs text-muted-foreground">الصفة (HE)</label>
+                <Input
+                  value={item.role.he}
+                  onChange={(e) =>
+                    updateTestimonialLocalized(idx, "role", "he", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="md:col-span-6">
+                <label className="text-xs text-muted-foreground">الرأي (AR)</label>
+                <Textarea
+                  rows={3}
+                  value={item.quote.ar}
+                  onChange={(e) =>
+                    updateTestimonialLocalized(idx, "quote", "ar", e.target.value)
+                  }
+                />
+              </div>
+              <div className="md:col-span-6">
+                <label className="text-xs text-muted-foreground">الرأي (HE)</label>
+                <Textarea
+                  rows={3}
+                  value={item.quote.he}
+                  onChange={(e) =>
+                    updateTestimonialLocalized(idx, "quote", "he", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="md:col-span-6">
+                <label className="text-xs text-muted-foreground">صورة العميل (URL)</label>
+                <Input
+                  value={item.imageUrl}
+                  onChange={(e) =>
+                    updateTestimonial(idx, "imageUrl", e.target.value)
+                  }
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs text-muted-foreground">التقييم (1-5)</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={5}
+                  value={item.rating}
+                  onChange={(e) =>
+                    updateTestimonial(
+                      idx,
+                      "rating",
+                      Number(e.target.value || 5)
+                    )
+                  }
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs text-muted-foreground">الترتيب</label>
+                <Input
+                  type="number"
+                  value={item.order ?? idx}
+                  onChange={(e) =>
+                    updateTestimonial(
+                      idx,
+                      "order",
+                      Number(e.target.value || 0)
+                    )
+                  }
+                />
+              </div>
+              <div className="md:col-span-2 flex items-end">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <Input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={item.isActive !== false}
+                    onChange={(e) =>
+                      updateTestimonial(idx, "isActive", e.target.checked)
+                    }
+                  />
+                  مفعّل
+                </label>
+              </div>
+
+              <div className="md:col-span-12 flex items-center gap-2">
+                {item.imageUrl?.trim() && (
+                  <img
+                    src={item.imageUrl}
+                    alt={item.name.ar || item.name.he || `testimonial-${idx + 1}`}
+                    className="h-12 w-12 rounded-full object-cover border"
+                  />
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveItem(setTestimonials, idx, -1)}
+                    title="أعلى"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveItem(setTestimonials, idx, 1)}
+                    title="أسفل"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={() =>
+                      setTestimonials((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                    title="حذف"
+                  >
+                    <Trash className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {!testimonials.length && (
+            <p className="text-sm text-muted-foreground">
+              لا توجد آراء مخصّصة. سيتم استخدام آراء الترجمة الافتراضية.
             </p>
           )}
         </div>

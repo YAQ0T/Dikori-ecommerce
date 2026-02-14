@@ -16,6 +16,7 @@ type OrderStatus =
 interface OrderTableProps {
   orders: any[];
   filter: string;
+  paymentMethodFilter: "all" | "card" | "cod" | "bank_transfer";
   updateStatus: (orderId: string, newStatus: OrderStatus) => Promise<void>;
   setSelectedOrder: (order: any) => void;
 }
@@ -24,17 +25,25 @@ const useStatusHelpers = () => {
   const { t } = useTranslation();
   const statusLabel = (s: string) =>
     t(`admin.orders.status.${s}` as const, { defaultValue: s || "-" });
-  const payMethodLabel = (m: string) =>
-    m === "card"
-      ? t("admin.orders.paymentMethods.card")
-      : t("admin.orders.paymentMethods.cod");
+  const payMethodLabel = (m: string) => {
+    if (m === "card") return t("admin.orders.paymentMethods.card");
+    if (m === "cod") return t("admin.orders.paymentMethods.cod");
+    if (m === "bank_transfer") {
+      return t("admin.orders.paymentMethods.bank_transfer", {
+        defaultValue: "🏦 حوالة بنكية",
+      });
+    }
+    return m || "-";
+  };
   const payStatusLabel = (s: string) => {
     if (s === "paid") return t("admin.orders.paymentStatus.paid");
     if (s === "failed") return t("admin.orders.paymentStatus.failed");
     return t("admin.orders.paymentStatus.unpaid");
   };
+  const bankTransferStatusLabel = (s: string) =>
+    t(`admin.orders.bankTransferStatus.${s}` as const, { defaultValue: s || "-" });
 
-  return { statusLabel, payMethodLabel, payStatusLabel, t };
+  return { statusLabel, payMethodLabel, payStatusLabel, bankTransferStatusLabel, t };
 };
 
 const currency = (n: number) => `₪${Number(n || 0).toFixed(2)}`;
@@ -86,17 +95,29 @@ const useItemRenderer = () => {
 const OrderTable: React.FC<OrderTableProps> = ({
   orders,
   filter,
+  paymentMethodFilter,
   updateStatus,
   setSelectedOrder,
 }) => {
-  const { statusLabel, payMethodLabel, payStatusLabel, t } = useStatusHelpers();
+  const {
+    statusLabel,
+    payMethodLabel,
+    payStatusLabel,
+    bankTransferStatusLabel,
+    t,
+  } = useStatusHelpers();
   const { renderItemsSummary } = useItemRenderer();
   const filteredOrders = useMemo(
     () =>
-      orders.filter((order) =>
-        filter === "all" ? true : order.status === filter
-      ),
-    [filter, orders]
+      orders.filter((order) => {
+        const statusMatch = filter === "all" ? true : order.status === filter;
+        const paymentMethodMatch =
+          paymentMethodFilter === "all"
+            ? true
+            : order.paymentMethod === paymentMethodFilter;
+        return statusMatch && paymentMethodMatch;
+      }),
+    [filter, paymentMethodFilter, orders]
   );
 
   if (orders.length === 0)
@@ -163,7 +184,20 @@ const OrderTable: React.FC<OrderTableProps> = ({
                   {payMethodLabel(order?.paymentMethod)}
                 </td>
                 <td className="border px-4 py-2">
-                  {payStatusLabel(order?.paymentStatus)}
+                  <div className="space-y-1">
+                    <div>{payStatusLabel(order?.paymentStatus)}</div>
+                    {order?.paymentMethod === "bank_transfer" &&
+                      order?.bankTransferStatus && (
+                        <div className="text-xs text-blue-700">
+                          {bankTransferStatusLabel(order.bankTransferStatus)}
+                        </div>
+                      )}
+                    {order?.paymentStatusNote && (
+                      <div className="text-xs text-muted-foreground">
+                        {order.paymentStatusNote}
+                      </div>
+                    )}
+                  </div>
                 </td>
                 <td className="border px-4 py-2">
                   {statusLabel(order?.status)}

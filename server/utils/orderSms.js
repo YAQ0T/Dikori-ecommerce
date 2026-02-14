@@ -70,6 +70,9 @@ function cleanCardType(raw) {
   if (lower === "cod" || lower === "cash" || lower === "cash_on_delivery") {
     return "";
   }
+  if (lower === "bank_transfer") {
+    return "حوالة بنكية";
+  }
   if (lower === "card") {
     return "بطاقة";
   }
@@ -210,8 +213,96 @@ function queueOrderSummarySMS(options) {
     });
 }
 
+function buildPaymentConfirmedMessage({
+  order,
+  paymentNote = "",
+} = {}) {
+  const safeOrder = toPlainObject(order) || {};
+  const name = resolveCustomerName(safeOrder);
+  const currency = safeOrder.paymentCurrency || safeOrder.currency;
+  const total = formatCurrency(safeOrder.total, currency);
+  const orderId = safeOrder?._id ? String(safeOrder._id) : "-";
+  const method =
+    cleanCardType(safeOrder.paymentMethod) ||
+    (safeOrder.paymentMethod === "cod" ? "الدفع عند الاستلام" : "");
+  const note = String(paymentNote || "").trim();
+
+  const lines = [];
+  lines.push(`مرحبا ${name}`);
+  lines.push("شكرا على طلبك من ديكوري.");
+  lines.push("تمت عملية الدفع بنجاح.");
+  lines.push(`رقم الطلب: ${orderId}`);
+  lines.push(`المبلغ المدفوع: ${total}`);
+  if (method) {
+    lines.push(`طريقة الدفع: ${method}`);
+  }
+  if (note) {
+    lines.push(`ملاحظة: ${note}`);
+  }
+  lines.push("نسعد بخدمتك دائما.");
+
+  return lines.join("\n");
+}
+
+async function sendPaymentConfirmedSMS({
+  order,
+  paymentNote,
+} = {}) {
+  const safeOrder = toPlainObject(order);
+  if (!safeOrder) {
+    return { ok: false, reason: "missing_order" };
+  }
+
+  const phone = resolveCustomerPhone(safeOrder);
+  if (!phone) {
+    return { ok: false, reason: "missing_phone" };
+  }
+
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) {
+    return { ok: false, reason: "invalid_phone" };
+  }
+
+  const message = buildPaymentConfirmedMessage({
+    order: safeOrder,
+    paymentNote,
+  });
+
+  try {
+    const result = await sendSMSHTD(normalizedPhone, message);
+    if (!result?.ok) {
+      return { ok: false, reason: result?.reason || "send_failed" };
+    }
+    return { ok: true, result };
+  } catch (err) {
+    console.error("Failed to send payment confirmation SMS:", err?.message || err);
+    return { ok: false, reason: err?.message || "send_failed" };
+  }
+}
+
+function queuePaymentConfirmedSMS(options) {
+  if (!options || !options.order) return;
+  Promise.resolve()
+    .then(() => sendPaymentConfirmedSMS(options))
+    .then((result) => {
+      if (!result?.ok) {
+        const reason = result?.reason || "unknown_reason";
+        if (reason === "missing_phone" || reason === "invalid_phone") {
+          return;
+        }
+        console.warn("Payment confirmation SMS was not sent:", reason);
+      }
+    })
+    .catch((err) => {
+      console.error("Payment confirmation SMS error:", err?.message || err);
+    });
+}
+
 module.exports = {
   sendOrderSummarySMS,
   queueOrderSummarySMS,
   buildOrderSummaryMessage,
+  sendPaymentConfirmedSMS,
+  queuePaymentConfirmedSMS,
+  buildPaymentConfirmedMessage,
 };

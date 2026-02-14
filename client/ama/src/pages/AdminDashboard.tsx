@@ -138,6 +138,9 @@ const AdminDashboard: React.FC = () => {
   // ======================= الطلبات =======================
   const [orders, setOrders] = useState<any[]>([]);
   const [filter, setFilter] = useState("all");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<
+    "all" | "card" | "cod" | "bank_transfer"
+  >("all");
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
 
   // ======================= واجهة المتجر (القوائم) =======================
@@ -978,9 +981,39 @@ const AdminDashboard: React.FC = () => {
               </Button>
             </div>
 
+            <div className="flex justify-end gap-2 mb-4 flex-wrap">
+              <Button
+                variant={paymentMethodFilter === "all" ? "default" : "outline"}
+                onClick={() => setPaymentMethodFilter("all")}
+              >
+                كل طرق الدفع
+              </Button>
+              <Button
+                variant={paymentMethodFilter === "card" ? "default" : "outline"}
+                onClick={() => setPaymentMethodFilter("card")}
+              >
+                💳 بطاقة
+              </Button>
+              <Button
+                variant={paymentMethodFilter === "cod" ? "default" : "outline"}
+                onClick={() => setPaymentMethodFilter("cod")}
+              >
+                🚚 عند التوصيل
+              </Button>
+              <Button
+                variant={
+                  paymentMethodFilter === "bank_transfer" ? "default" : "outline"
+                }
+                onClick={() => setPaymentMethodFilter("bank_transfer")}
+              >
+                🏦 حوالة بنكية
+              </Button>
+            </div>
+
             <OrderTable
               orders={orders}
               filter={filter}
+              paymentMethodFilter={paymentMethodFilter}
               updateStatus={updateStatus}
               setSelectedOrder={setSelectedOrder}
             />

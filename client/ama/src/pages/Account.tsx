@@ -36,6 +36,19 @@ const statusLabel = (s: string) => {
   }
 };
 
+const paymentMethodLabel = (method: string) => {
+  if (method === "card") return "💳 بطاقة";
+  if (method === "cod") return "🚚 عند التوصيل";
+  if (method === "bank_transfer") return "🏦 حوالة بنكية";
+  return method || "-";
+};
+
+const paymentStatusLabel = (status: string) => {
+  if (status === "paid") return "✅ مدفوع";
+  if (status === "failed") return "❌ فشل";
+  return "🕓 غير مدفوع";
+};
+
 const currency = (n: number) => `₪${Number(n || 0).toFixed(2)}`;
 
 const Account: React.FC = () => {
@@ -260,6 +273,8 @@ const Account: React.FC = () => {
                   <th className="p-2 border">Subtotal</th>
                   <th className="p-2 border">الخصم</th>
                   <th className="p-2 border">الإجمالي</th>
+                  <th className="p-2 border">طريقة الدفع</th>
+                  <th className="p-2 border">حالة الدفع</th>
                   <th className="p-2 border">الحالة</th>
                   <th className="p-2 border">التاريخ</th>
                   <th className="p-2 border">تفاصيل</th>
@@ -288,6 +303,12 @@ const Account: React.FC = () => {
                         {discountAmount ? `-${currency(discountAmount)}` : "—"}
                       </td>
                       <td className="p-2 border">{currency(order.total)}</td>
+                      <td className="p-2 border">
+                        {paymentMethodLabel(order?.paymentMethod)}
+                      </td>
+                      <td className="p-2 border">
+                        {paymentStatusLabel(order?.paymentStatus)}
+                      </td>
                       <td className="p-2 border">
                         {statusLabel(order.status)}
                       </td>

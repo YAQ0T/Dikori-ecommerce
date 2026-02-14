@@ -279,7 +279,9 @@ const CartPageContent: React.FC = () => {
     address: "",
     email: "",
   });
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "cod">("card");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "card" | "cod" | "bank_transfer"
+  >("card");
   const [notes, setNotes] = useState("");
 
   const [preview, setPreview] = useState<DiscountPreview | null>(null);
@@ -488,10 +490,16 @@ const CartPageContent: React.FC = () => {
     return executeRecaptcha(RECAPTCHA_ACTION);
   };
 
-  const handleCreateCOD = async () => {
-    // الدفع عند التوصيل: يتطلب حساب
+  const handleCreateOfflineOrder = async (
+    method: "cod" | "bank_transfer"
+  ) => {
+    // خيارات الدفع غير الإلكتروني: تتطلب حساب
     if (!user) {
-      setPolicyError("الدفع عند التوصيل يتطلب تسجيل الدخول.");
+      setPolicyError(
+        method === "bank_transfer"
+          ? "الدفع بالحوالة البنكية يتطلب تسجيل الدخول."
+          : "الدفع عند التوصيل يتطلب تسجيل الدخول."
+      );
       return;
     }
     if (!userData.address.trim()) return alert("الرجاء تعبئة العنوان");
@@ -516,7 +524,7 @@ const CartPageContent: React.FC = () => {
           recaptchaMinScore: RECAPTCHA_MIN_SCORE,
 
           address: userData.address,
-          paymentMethod: "cod",
+          paymentMethod: method,
           paymentStatus: "unpaid",
           status: "waiting_confirmation",
           notes,
@@ -534,10 +542,15 @@ const CartPageContent: React.FC = () => {
       );
 
       clearCart();
-      navigate("/checkout/success?method=cod");
+      navigate(`/checkout/success?method=${method}`);
     } catch (e: any) {
       console.error(e);
-      alert(e?.response?.data?.message || "تعذر إنشاء طلب الدفع عند التوصيل");
+      alert(
+        e?.response?.data?.message ||
+          (method === "bank_transfer"
+            ? "تعذر إنشاء طلب الحوالة البنكية"
+            : "تعذر إنشاء طلب الدفع عند التوصيل")
+      );
     }
   };
 
@@ -1215,6 +1228,56 @@ const CartPageContent: React.FC = () => {
                 </div>
               </div>
             </label>
+
+            {/* الحوالة البنكية: يظهر لكنه معطّل للزوار */}
+            <label
+              className={`flex items-start gap-2 ${
+                isGuest ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+              }`}
+            >
+              <input
+                type="radio"
+                name="pay"
+                disabled={isGuest}
+                checked={paymentMethod === "bank_transfer"}
+                onChange={() => setPaymentMethod("bank_transfer")}
+              />
+              <div>
+                <div className="font-medium">🏦 حوالة بنكية</div>
+                <div className="text-sm text-blue-700">
+                  {isGuest ? (
+                    <>
+                      هذا الخيار متاح فقط للمستخدمين المسجّلين.{" "}
+                      <a
+                        href="/login"
+                        className="underline text-blue-600"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                      >
+                        سجّل الدخول
+                      </a>{" "}
+                      أو{" "}
+                      <a
+                        href="/register"
+                        className="underline text-blue-600"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                      >
+                        أنشئ حسابًا
+                      </a>{" "}
+                      لتفعيله.
+                    </>
+                  ) : (
+                    <>
+                      سيتم إنشاء الطلب مباشرة، وبعدها سيتواصل معك فريق المتجر
+                      لتزويدك بتعليمات الحوالة البنكية.
+                    </>
+                  )}
+                </div>
+              </div>
+            </label>
           </div>
 
           {/* Checkbox السياسات */}
@@ -1263,9 +1326,20 @@ const CartPageContent: React.FC = () => {
               >
                 ادفع الآن بالبطاقة
               </Button>
+            ) : paymentMethod === "bank_transfer" ? (
+              <Button
+                onClick={() => handleCreateOfflineOrder("bank_transfer")}
+                variant="outline"
+                disabled={cart.length === 0 || isGuest}
+                title={
+                  isGuest ? "سجّل الدخول لتفعيل الحوالة البنكية" : undefined
+                }
+              >
+                إنشاء طلب حوالة بنكية
+              </Button>
             ) : (
               <Button
-                onClick={handleCreateCOD}
+                onClick={() => handleCreateOfflineOrder("cod")}
                 variant="outline"
                 disabled={cart.length === 0 || isGuest}
                 title={
@@ -1280,8 +1354,8 @@ const CartPageContent: React.FC = () => {
             {isGuest && (
               <p className="text-xs text-muted-foreground">
                 تذكير: يمكنك إتمام الطلب كـ <strong>ضيف</strong> باستخدام الدفع
-                بالبطاقة. لإتاحة الدفع عند التوصيل، يرجى تسجيل الدخول أو إنشاء
-                حساب.
+                بالبطاقة. لإتاحة الدفع عند التوصيل أو الحوالة البنكية، يرجى
+                تسجيل الدخول أو إنشاء حساب.
               </p>
             )}
           </div>

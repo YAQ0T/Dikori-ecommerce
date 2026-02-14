@@ -70,6 +70,7 @@ function resolvePaymentMethodLabel(raw) {
   const method = String(raw || "").trim().toLowerCase();
   if (method === "cod") return "الدفع عند الاستلام";
   if (method === "card") return "بطاقة";
+  if (method === "bank_transfer") return "حوالة بنكية";
   return raw ? String(raw).trim() : "غير محدد";
 }
 

@@ -226,6 +226,11 @@ const orderStatusHandler = getRouteHandler(
   "patch",
   "/:id/status"
 );
+const orderPaymentHandler = getRouteHandler(
+  orderStatusRouter,
+  "patch",
+  "/:id/payment"
+);
 
 test(
   "Updating an order to delivered marks it as paid",
@@ -317,6 +322,134 @@ test(
     const saved = ordersStore.get(res.body._id);
     assert.ok(saved, "order persisted in store");
     assert.equal(saved.paymentStatus, "unpaid");
+  }
+);
+
+test(
+  "Bank transfer orders start unpaid and pending contact",
+  { concurrency: false },
+  async () => {
+    resetState();
+
+    const productId = new mongoose.Types.ObjectId().toString();
+    const variantId = new mongoose.Types.ObjectId().toString();
+
+    const variantDoc = {
+      _id: variantId,
+      product: productId,
+      price: { amount: 50, discount: null },
+      stock: { sku: "SKU-BANK", inStock: 10 },
+      color: { images: [] },
+      trackQuantity: false,
+    };
+
+    variantResolver = (query) => {
+      if (
+        query?._id &&
+        String(query._id) === variantId &&
+        (!query.product || String(query.product) === productId)
+      ) {
+        return variantDoc;
+      }
+      return null;
+    };
+
+    const req = {
+      body: {
+        address: "Bank Transfer St",
+        items: [
+          {
+            productId,
+            variantId,
+            quantity: 1,
+          },
+        ],
+        paymentMethod: "bank_transfer",
+      },
+    };
+
+    const res = createMockRes();
+    await codHandler(req, res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.paymentMethod, "bank_transfer");
+    assert.equal(res.body.paymentStatus, "unpaid");
+    assert.equal(res.body.bankTransferStatus, "pending_contact");
+  }
+);
+
+test(
+  "Admin can set bank transfer status and payment note",
+  { concurrency: false },
+  async () => {
+    resetState();
+
+    const orderId = new mongoose.Types.ObjectId().toString();
+    ordersStore.set(orderId, {
+      _id: orderId,
+      paymentMethod: "bank_transfer",
+      paymentStatus: "unpaid",
+      bankTransferStatus: "pending_contact",
+      paymentStatusNote: "",
+      items: [],
+      subtotal: 0,
+      total: 0,
+      discount: { amount: 0 },
+      address: "Admin Street",
+    });
+
+    const req = {
+      params: { id: orderId },
+      body: {
+        bankTransferStatus: "verified",
+        paymentStatusNote: "Paid via Bank of Palestine",
+      },
+      user: { id: new mongoose.Types.ObjectId().toString(), role: "admin" },
+    };
+    const res = createMockRes();
+
+    await orderPaymentHandler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.bankTransferStatus, "verified");
+    assert.equal(res.body.paymentStatus, "paid");
+    assert.equal(res.body.paymentStatusNote, "Paid via Bank of Palestine");
+  }
+);
+
+test(
+  "Bank transfer status update is rejected for non bank-transfer orders",
+  { concurrency: false },
+  async () => {
+    resetState();
+
+    const orderId = new mongoose.Types.ObjectId().toString();
+    ordersStore.set(orderId, {
+      _id: orderId,
+      paymentMethod: "cod",
+      paymentStatus: "unpaid",
+      bankTransferStatus: "",
+      paymentStatusNote: "",
+      items: [],
+      subtotal: 0,
+      total: 0,
+      discount: { amount: 0 },
+      address: "Regular Street",
+    });
+
+    const req = {
+      params: { id: orderId },
+      body: {
+        bankTransferStatus: "instructions_sent",
+      },
+      user: { id: new mongoose.Types.ObjectId().toString(), role: "admin" },
+    };
+    const res = createMockRes();
+
+    await orderPaymentHandler(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.match(String(res.body?.message || ""), /bank_transfer/);
   }
 );
 

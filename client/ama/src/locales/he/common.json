@@ -558,7 +558,14 @@
       },
       "paymentMethods": {
         "card": "💳 תשלום בכרטיס",
-        "cod": "🚚 תשלום במשלוח"
+        "cod": "🚚 תשלום במשלוח",
+        "bank_transfer": "🏦 העברה בנקאית"
+      },
+      "bankTransferStatus": {
+        "pending_contact": "ממתין ליצירת קשר",
+        "instructions_sent": "נשלחו הוראות",
+        "transfer_received": "התקבל אישור העברה",
+        "verified": "ההעברה אומתה"
       },
       "paymentStatus": {
         "paid": "✅ שולם",
@@ -594,6 +601,30 @@
         "delete": "🗑️ מחיקה לצמיתות",
         "marking": "בודק...",
         "markPaid": "סימון כתשלום (לאזה)"
+      },
+      "payment": {
+        "title": "עדכון סטטוס תשלום (מנהל)",
+        "labels": {
+          "paymentStatus": "סטטוס תשלום",
+          "bankTransferStatus": "סטטוס העברה בנקאית",
+          "note": "הערת תשלום"
+        },
+        "status": {
+          "unpaid": "לא שולם",
+          "paid": "שולם",
+          "failed": "תשלום נכשל"
+        },
+        "placeholders": {
+          "note": "לדוגמה: שולם דרך בנק פלסטין - מספר אסמכתא XXXXX"
+        },
+        "actions": {
+          "save": "שמירת סטטוס תשלום",
+          "saving": "שומר סטטוס תשלום..."
+        },
+        "alerts": {
+          "updateSuccess": "סטטוס התשלום עודכן בהצלחה",
+          "updateFailed": "לא ניתן לעדכן סטטוס תשלום, נסו שוב מאוחר יותר"
+        }
       }
     },
     "users": {

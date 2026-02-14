@@ -73,9 +73,22 @@ type SettingsCategory = {
   order?: number;
 };
 
+type SettingsTestimonial = {
+  key?: string;
+  name?: LocalizedText;
+  role?: LocalizedText;
+  quote?: LocalizedText;
+  imageUrl?: string;
+  rating?: number;
+  order?: number;
+  isActive?: boolean;
+};
+
 type SiteSettings = {
   hero?: SettingsHero;
   homeCategories?: SettingsCategory[];
+  testimonialsTitle?: LocalizedText;
+  testimonials?: SettingsTestimonial[];
 };
 
 const getId = (p: Product, index: number) =>
@@ -342,9 +355,97 @@ const Home: FC = () => {
     returnObjects: true,
   }) as Array<{ key: string; value: string; label: string }>;
 
-  const testimonials = t("home.testimonials", {
-    returnObjects: true,
-  }) as Array<{ key: string; name: string; role: string; quote: string }>;
+  const fallbackTestimonials = useMemo(() => {
+    const arList = (t("home.testimonials", {
+      returnObjects: true,
+    }) || []) as Array<{
+      key?: string;
+      name?: string;
+      role?: string;
+      quote?: string;
+    }>;
+    const heList = (t("home.testimonials", {
+      returnObjects: true,
+      lng: "he",
+    }) || []) as Array<{
+      key?: string;
+      name?: string;
+      role?: string;
+      quote?: string;
+    }>;
+
+    const heMap = new Map<
+      string,
+      {
+        name?: string;
+        role?: string;
+        quote?: string;
+      }
+    >();
+    heList.forEach((item, index) => {
+      heMap.set(item.key || `fallback-${index}`, item);
+    });
+
+    return arList.map((item, idx) => {
+      const key = item.key || `fallback-${idx}`;
+      const heItem = heMap.get(key);
+      return {
+        key,
+        name: {
+          ar: item.name || "",
+          he: heItem?.name || "",
+        },
+        role: {
+          ar: item.role || "",
+          he: heItem?.role || "",
+        },
+        quote: {
+          ar: item.quote || "",
+          he: heItem?.quote || "",
+        },
+        imageUrl: "",
+        rating: 5,
+        order: idx,
+        isActive: true,
+      };
+    });
+  }, [t]);
+
+  const testimonialsTitle =
+    getLocalizedText(settings?.testimonialsTitle ?? "", locale) ||
+    t("home.testimonialsTitle");
+
+  const testimonials = useMemo(() => {
+    const source =
+      Array.isArray(settings?.testimonials) && settings.testimonials.length
+        ? settings.testimonials
+        : fallbackTestimonials;
+
+    return source
+      .filter((item) => item?.isActive !== false)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((item, idx) => {
+        const quote = getLocalizedText(item.quote ?? "", locale);
+        const name = getLocalizedText(item.name ?? "", locale);
+        const role = getLocalizedText(item.role ?? "", locale);
+        const imageUrl =
+          typeof item.imageUrl === "string" ? item.imageUrl.trim() : "";
+        const ratingInput = Number(item.rating);
+        const rating = Number.isFinite(ratingInput)
+          ? Math.max(1, Math.min(5, Math.round(ratingInput)))
+          : 5;
+        return {
+          key:
+            (typeof item.key === "string" && item.key) || `testimonial-${idx}`,
+          quote,
+          name,
+          role,
+          imageUrl,
+          rating,
+        };
+      })
+      .filter((item) => item.quote || item.name);
+  }, [settings?.testimonials, fallbackTestimonials, locale]);
 
   const badgeIconMap: Record<string, ElementType> = {
     delivery: Truck,
@@ -567,30 +668,52 @@ const Home: FC = () => {
         />
 
         {/* شهادات العملاء */}
-        <section className="mt-12 md:mt-16">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl md:text-2xl font-semibold text-right">
-              {t("home.testimonialsTitle")}
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {testimonials.map((item, idx) => (
-              <div
-                key={item.key}
-                className="surface-card p-4 text-right fade-up"
-                style={{ animationDelay: `${0.1 + idx * 0.1}s` }}
-              >
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  “{item.quote}”
-                </p>
-                <div className="mt-4">
-                  <p className="font-semibold">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.role}</p>
+        {testimonials.length > 0 && (
+          <section className="mt-12 md:mt-16">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl md:text-2xl font-semibold text-right">
+                {testimonialsTitle}
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {testimonials.map((item, idx) => (
+                <div
+                  key={item.key}
+                  className="surface-card p-4 text-right fade-up"
+                  style={{ animationDelay: `${0.1 + idx * 0.1}s` }}
+                >
+                  <div className="mb-2 flex items-center justify-end gap-1 text-amber-500">
+                    {Array.from({ length: item.rating }).map((_, starIdx) => (
+                      <span key={`${item.key}-star-${starIdx}`}>★</span>
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    “{item.quote}”
+                  </p>
+                  <div className="mt-4 flex items-center justify-end gap-3">
+                    <div>
+                      <p className="font-semibold">{item.name}</p>
+                      {item.role && (
+                        <p className="text-xs text-muted-foreground">{item.role}</p>
+                      )}
+                    </div>
+                    {item.imageUrl && (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.name || `testimonial-${idx + 1}`}
+                        className="h-12 w-12 rounded-full border object-cover bg-[#F5F7F9]"
+                        loading="lazy"
+                        decoding="async"
+                        width={48}
+                        height={48}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* طرق الدفع */}
         <section className="mt-10 md:mt-14">

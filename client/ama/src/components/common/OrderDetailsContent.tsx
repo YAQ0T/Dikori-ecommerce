@@ -51,6 +51,15 @@ type Order = {
   total: number; // إجمالي بعد الخصم
   address: string;
   status: string;
+  paymentMethod?: "card" | "cod" | "bank_transfer" | string;
+  paymentStatus?: "unpaid" | "paid" | "failed" | string;
+  bankTransferStatus?:
+    | "pending_contact"
+    | "instructions_sent"
+    | "transfer_received"
+    | "verified"
+    | string;
+  paymentStatusNote?: string;
   createdAt: string;
   updatedAt?: string;
   // حقول اختيارية محتملة لتصنيف الطلب
@@ -59,6 +68,44 @@ type Order = {
 
 const currency = (n: number | undefined | null) =>
   typeof n === "number" ? `₪${n.toFixed(2)}` : "₪0.00";
+
+function paymentMethodLabel(
+  method: string | undefined,
+  locale: string | undefined
+): string {
+  const he = locale === "he";
+  if (method === "card") return he ? "כרטיס" : "بطاقة";
+  if (method === "cod") return he ? "תשלום במשלוח" : "الدفع عند الاستلام";
+  if (method === "bank_transfer") return he ? "העברה בנקאית" : "حوالة بنكية";
+  return method || "-";
+}
+
+function paymentStatusLabel(
+  status: string | undefined,
+  locale: string | undefined
+): string {
+  const he = locale === "he";
+  if (status === "paid") return he ? "שולם" : "تم الدفع";
+  if (status === "failed") return he ? "נכשל" : "فشل الدفع";
+  return he ? "לא שולם" : "غير مدفوع";
+}
+
+function bankTransferStatusLabel(
+  status: string | undefined,
+  locale: string | undefined
+): string {
+  const he = locale === "he";
+  if (status === "instructions_sent") {
+    return he ? "נשלחו הוראות" : "تم إرسال التعليمات";
+  }
+  if (status === "transfer_received") {
+    return he ? "התקבל אישור העברה" : "تم استلام إشعار التحويل";
+  }
+  if (status === "verified") {
+    return he ? "ההעברה אומתה" : "تم التحقق من التحويل";
+  }
+  return he ? "ממתין ליצירת קשר" : "بانتظار التواصل";
+}
 
 // 🧠 استنتاج وحدة من نص المقاس (احتياطي إذا لم تصل من الـ API)
 function inferUnitFromMeasure(raw?: string | null): string {
@@ -360,6 +407,25 @@ const OrderDetailsContent: React.FC<{ order: Order | any }> = ({ order }) => {
         <p>
           <strong>الحالة:</strong> {order?.status || "-"}
         </p>
+        <p>
+          <strong>طريقة الدفع:</strong>{" "}
+          {paymentMethodLabel(order?.paymentMethod, locale)}
+        </p>
+        <p>
+          <strong>حالة الدفع:</strong>{" "}
+          {paymentStatusLabel(order?.paymentStatus, locale)}
+        </p>
+        {order?.paymentMethod === "bank_transfer" ? (
+          <p>
+            <strong>حالة الحوالة البنكية:</strong>{" "}
+            {bankTransferStatusLabel(order?.bankTransferStatus, locale)}
+          </p>
+        ) : null}
+        {order?.paymentStatusNote ? (
+          <p className="md:col-span-2">
+            <strong>ملاحظة الدفع:</strong> {order.paymentStatusNote}
+          </p>
+        ) : null}
         <p>
           <strong>تاريخ الطلب:</strong>{" "}
           {order?.createdAt

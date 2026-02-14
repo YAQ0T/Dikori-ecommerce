@@ -94,7 +94,7 @@ const OrderSchema = new mongoose.Schema(
     deliveredAt: { type: Date },
     paymentMethod: {
       type: String,
-      enum: ["card", "cod"],
+      enum: ["card", "cod", "bank_transfer"],
       default: "cod",
       index: true,
     },
@@ -114,6 +114,18 @@ const OrderSchema = new mongoose.Schema(
     paymentTransactionId: { type: String, default: "" },
     paymentCardType: { type: String, default: "" },
     paymentCardLast4: { type: String, default: "" },
+    paymentStatusNote: { type: String, default: "" },
+    bankTransferStatus: {
+      type: String,
+      enum: [
+        "pending_contact",
+        "instructions_sent",
+        "transfer_received",
+        "verified",
+        "",
+      ],
+      default: "",
+    },
     notes: { type: String, default: "" },
   },
   { timestamps: true }

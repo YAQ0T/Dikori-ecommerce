@@ -86,6 +86,9 @@ function normalizeCardTypeText(value?: string | null): string | undefined {
   if (lower === "card") {
     return "بطاقة";
   }
+  if (lower === "bank_transfer") {
+    return "حوالة بنكية";
+  }
   if (/[\p{Script=Arabic}]/u.test(trimmed)) {
     return trimmed;
   }
@@ -242,7 +245,7 @@ const CheckoutSuccess: React.FC = () => {
 
   const [orderSummary, setOrderSummary] = useState<OrderSummary | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<
-    "cod" | "card" | "unknown"
+    "cod" | "card" | "bank_transfer" | "unknown"
   >("unknown");
   const [reference, setReference] = useState<string>("");
 
@@ -262,7 +265,13 @@ const CheckoutSuccess: React.FC = () => {
         const method = getPaymentMethod();
 
         const normalizedMethod =
-          method === "cod" ? "cod" : method ? "card" : "unknown";
+          method === "cod"
+            ? "cod"
+            : method === "bank_transfer" || method === "bank"
+              ? "bank_transfer"
+              : method
+                ? "card"
+                : "unknown";
         setPaymentMethod(normalizedMethod);
         const ref = getReference();
         setReference(ref);
@@ -271,6 +280,15 @@ const CheckoutSuccess: React.FC = () => {
           setState("ok");
           setMessage(
             "تم استقبال طلبك بنجاح وسنتواصل معك لتأكيد التوصيل والدفع عند الاستلام."
+          );
+          clearCart();
+          return;
+        }
+
+        if (normalizedMethod === "bank_transfer") {
+          setState("ok");
+          setMessage(
+            "تم استقبال طلب الحوالة البنكية بنجاح. سيتواصل معك فريق المتجر قريبًا لإرسال تعليمات التحويل."
           );
           clearCart();
           return;
@@ -499,6 +517,8 @@ const CheckoutSuccess: React.FC = () => {
     if (state === "ok") {
       return paymentMethod === "cod"
         ? "تم تأكيد طلب الدفع عند الاستلام"
+        : paymentMethod === "bank_transfer"
+          ? "تم إنشاء طلب الحوالة البنكية"
         : "تم تأكيد الدفع بنجاح";
     }
     return "تعذر تأكيد الدفع";

@@ -3,6 +3,9 @@ const express = require("express");
 const mongoose = require("mongoose");
 const { verifyToken, isAdmin } = require("../middleware/authMiddleware");
 const Order = require("../models/Order");
+const {
+  queuePaymentConfirmationNotification,
+} = require("../utils/paymentConfirmation");
 const { validateBody, validateParams, z } = require("../utils/validate");
 
 const router = express.Router();
@@ -17,6 +20,30 @@ const statusSchema = z.object({
     "cancelled",
   ]),
 });
+
+const paymentSchema = z
+  .object({
+    paymentStatus: z.enum(["unpaid", "paid", "failed"]).optional(),
+    paymentStatusNote: z.string().trim().max(2000).optional(),
+    bankTransferStatus: z
+      .enum([
+        "pending_contact",
+        "instructions_sent",
+        "transfer_received",
+        "verified",
+      ])
+      .optional(),
+  })
+  .refine(
+    (value) =>
+      typeof value.paymentStatus !== "undefined" ||
+      typeof value.paymentStatusNote !== "undefined" ||
+      typeof value.bankTransferStatus !== "undefined",
+    {
+      message:
+        "يجب إرسال paymentStatus أو paymentStatusNote أو bankTransferStatus على الأقل",
+    }
+  );
 
 /**
  * PATCH /api/orders/:id/status
@@ -77,6 +104,94 @@ router.patch(
     console.error("❌ فشل تحديث حالة الطلب:", err);
     return res.status(500).json({ message: "حدث خطأ أثناء تحديث الحالة" });
   }
+  }
+);
+
+/**
+ * PATCH /api/orders/:id/payment
+ * body: {
+ *   paymentStatus?: "unpaid" | "paid" | "failed",
+ *   paymentStatusNote?: string,
+ *   bankTransferStatus?: "pending_contact" | "instructions_sent" | "transfer_received" | "verified"
+ * }
+ */
+router.patch(
+  "/:id/payment",
+  verifyToken,
+  isAdmin,
+  validateParams(idParamSchema),
+  validateBody(paymentSchema),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { paymentStatus, paymentStatusNote, bankTransferStatus } = req.body;
+
+      if (!mongoose.isValidObjectId(id)) {
+        return res.status(400).json({ message: "معرّف الطلب غير صالح" });
+      }
+
+      const existing = await Order.findById(id).lean();
+      if (!existing) {
+        return res.status(404).json({ message: "الطلب غير موجود" });
+      }
+      const previousPaymentStatus = String(existing.paymentStatus || "unpaid");
+
+      if (
+        typeof bankTransferStatus !== "undefined" &&
+        existing.paymentMethod !== "bank_transfer"
+      ) {
+        return res.status(400).json({
+          message: "حالة الحوالة البنكية متاحة فقط للطلبات بطريقة bank_transfer",
+        });
+      }
+
+      const updateSet = {};
+      if (typeof paymentStatus !== "undefined") {
+        updateSet.paymentStatus = paymentStatus;
+      }
+      if (typeof paymentStatusNote !== "undefined") {
+        updateSet.paymentStatusNote = String(paymentStatusNote || "").trim();
+      }
+      if (typeof bankTransferStatus !== "undefined") {
+        updateSet.bankTransferStatus = bankTransferStatus;
+        if (
+          bankTransferStatus === "verified" &&
+          typeof updateSet.paymentStatus === "undefined"
+        ) {
+          updateSet.paymentStatus = "paid";
+        }
+      }
+      const nextPaymentStatus =
+        typeof updateSet.paymentStatus !== "undefined"
+          ? String(updateSet.paymentStatus)
+          : previousPaymentStatus;
+
+      const updated = await Order.findByIdAndUpdate(
+        id,
+        { $set: updateSet },
+        { new: true, runValidators: true }
+      ).lean();
+
+      if (!updated) {
+        return res.status(404).json({ message: "الطلب غير موجود" });
+      }
+
+      if (previousPaymentStatus !== "paid" && nextPaymentStatus === "paid") {
+        const noteToSend =
+          typeof updateSet.paymentStatusNote !== "undefined"
+            ? updateSet.paymentStatusNote
+            : existing.paymentStatusNote || "";
+        queuePaymentConfirmationNotification({
+          order: updated,
+          paymentNote: noteToSend,
+        });
+      }
+
+      return res.json(updated);
+    } catch (err) {
+      console.error("❌ فشل تحديث حالة الدفع:", err);
+      return res.status(500).json({ message: "حدث خطأ أثناء تحديث حالة الدفع" });
+    }
   }
 );
 

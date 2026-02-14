@@ -45,6 +45,18 @@ const subCategorySchema = z
   })
   .passthrough();
 
+const testimonialSchema = z
+  .object({
+    name: localizedSchema,
+    role: localizedSchema,
+    quote: localizedSchema,
+    imageUrl: z.string().trim().optional(),
+    rating: z.coerce.number().optional(),
+    order: z.coerce.number().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .passthrough();
+
 const siteSettingsSchema = z
   .object({
     hero: heroSchema,
@@ -55,6 +67,8 @@ const siteSettingsSchema = z
         sub: z.array(subCategorySchema).optional(),
       })
       .optional(),
+    testimonialsTitle: localizedSchema,
+    testimonials: z.array(testimonialSchema).optional(),
   })
   .passthrough();
 
@@ -182,6 +196,28 @@ router.put(
             }))
             .filter((item) => item.main && item.value);
         }
+      }
+
+      if (payload.testimonialsTitle) {
+        doc.testimonialsTitle = payload.testimonialsTitle;
+      }
+
+      if (Array.isArray(payload.testimonials)) {
+        doc.testimonials = payload.testimonials.map((item, idx) => {
+          const ratingInput = Number(item.rating);
+          const safeRating = Number.isFinite(ratingInput)
+            ? Math.max(1, Math.min(5, Math.round(ratingInput)))
+            : 5;
+          return {
+            name: item.name,
+            role: item.role,
+            quote: item.quote,
+            imageUrl: normalize(item.imageUrl),
+            rating: safeRating,
+            order: typeof item.order === "number" ? item.order : idx,
+            isActive: item.isActive !== false,
+          };
+        });
       }
 
       doc.seeded = true;

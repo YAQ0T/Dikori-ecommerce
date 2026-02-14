@@ -553,7 +553,14 @@
       },
       "paymentMethods": {
         "card": "💳 بطاقة",
-        "cod": "🚚 عند التوصيل"
+        "cod": "🚚 عند التوصيل",
+        "bank_transfer": "🏦 حوالة بنكية"
+      },
+      "bankTransferStatus": {
+        "pending_contact": "بانتظار التواصل",
+        "instructions_sent": "تم إرسال التعليمات",
+        "transfer_received": "تم استلام إشعار التحويل",
+        "verified": "تم التحقق من التحويل"
       },
       "paymentStatus": {
         "paid": "✅ مدفوع",
@@ -589,6 +596,30 @@
         "delete": "🗑️ حذف نهائي",
         "marking": "جاري التحقق…",
         "markPaid": "وسم كمدفوع (لحظة)"
+      },
+      "payment": {
+        "title": "تحديث حالة الدفع (للأدمن)",
+        "labels": {
+          "paymentStatus": "حالة الدفع",
+          "bankTransferStatus": "حالة الحوالة البنكية",
+          "note": "ملاحظة حالة الدفع"
+        },
+        "status": {
+          "unpaid": "غير مدفوع",
+          "paid": "تم الدفع",
+          "failed": "فشل الدفع"
+        },
+        "placeholders": {
+          "note": "مثال: تم الدفع عبر بنك فلسطين - رقم مرجع XXXXX"
+        },
+        "actions": {
+          "save": "حفظ حالة الدفع",
+          "saving": "جاري حفظ حالة الدفع..."
+        },
+        "alerts": {
+          "updateSuccess": "تم تحديث حالة الدفع بنجاح",
+          "updateFailed": "تعذر تحديث حالة الدفع، حاول لاحقًا"
+        }
       }
     },
     "users": {

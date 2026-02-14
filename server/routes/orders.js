@@ -528,10 +528,20 @@ router.post(
     if (!Array.isArray(rawItems) || rawItems.length === 0) {
       return res.status(400).json({ message: "قائمة العناصر مطلوبة" });
     }
-    if (paymentMethod !== "cod") {
+    const normalizedPaymentMethod = String(paymentMethod || "cod")
+      .trim()
+      .toLowerCase();
+    const offlinePaymentMethod =
+      normalizedPaymentMethod === "bank_transfer"
+        ? "bank_transfer"
+        : normalizedPaymentMethod === "cod"
+          ? "cod"
+          : null;
+
+    if (!offlinePaymentMethod) {
       return res
         .status(400)
-        .json({ message: "طريقة الدفع لهذا المسار يجب أن تكون cod" });
+        .json({ message: "طريقة الدفع لهذا المسار يجب أن تكون cod أو bank_transfer" });
     }
 
     let userObj = undefined;
@@ -679,9 +689,11 @@ router.post(
       ].includes(status)
         ? status
         : "waiting_confirmation",
-      paymentMethod: "cod",
+      paymentMethod: offlinePaymentMethod,
       paymentCurrency: DEFAULT_PAY_CURRENCY,
       paymentStatus: "unpaid",
+      bankTransferStatus:
+        offlinePaymentMethod === "bank_transfer" ? "pending_contact" : "",
 
       reference: null,
       notes: isNonEmpty(notes) ? String(notes).trim() : "",
@@ -691,7 +703,10 @@ router.post(
 
     queueOrderSummarySMS({
       order: doc,
-      cardType: "الدفع عند الاستلام",
+      cardType:
+        offlinePaymentMethod === "bank_transfer"
+          ? "حوالة بنكية"
+          : "الدفع عند الاستلام",
     });
     queueOrderAlertEmail({ order: doc });
 

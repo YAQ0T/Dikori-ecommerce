@@ -51,12 +51,27 @@ const CategoryMenuSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const TestimonialSchema = new mongoose.Schema(
+  {
+    name: { type: LocalizedSchema, default: () => ({}) },
+    role: { type: LocalizedSchema, default: () => ({}) },
+    quote: { type: LocalizedSchema, default: () => ({}) },
+    imageUrl: { type: String, default: "" },
+    rating: { type: Number, min: 1, max: 5, default: 5 },
+    order: { type: Number, default: 0 },
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: false }
+);
+
 const SiteSettingsSchema = new mongoose.Schema(
   {
     seeded: { type: Boolean, default: false },
     hero: { type: HeroSchema, default: () => ({}) },
     homeCategories: { type: [CategorySchema], default: [] },
     categoryMenu: { type: CategoryMenuSchema, default: () => ({}) },
+    testimonialsTitle: { type: LocalizedSchema, default: () => ({}) },
+    testimonials: { type: [TestimonialSchema], default: [] },
   },
   { timestamps: true }
 );

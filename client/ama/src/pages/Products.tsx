@@ -265,6 +265,7 @@ const Products: React.FC = () => {
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const searchBoxWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -584,6 +585,13 @@ const Products: React.FC = () => {
 
   useEffect(() => {
     let active = true;
+    if (!isSearchFocused) {
+      setShowSuggestions(false);
+      setHighlightIndex(-1);
+      setSuggestionsLoading(false);
+      return;
+    }
+
     const term = rawSearch.trim();
     if (!term) {
       setSuggestions([]);
@@ -603,7 +611,7 @@ const Products: React.FC = () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [rawSearch, fetchSuggestions]);
+  }, [rawSearch, fetchSuggestions, isSearchFocused]);
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -663,12 +671,20 @@ const Products: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products]);
 
-  const triggerSearch = (value?: string) => {
+  const triggerSearch = (
+    value?: string,
+    options?: { blurInput?: boolean }
+  ) => {
     const next = (value ?? rawSearch).trim();
     setRawSearch(next);
     setSearchTerm(next);
     setShowSuggestions(false);
     setHighlightIndex(-1);
+
+    if (options?.blurInput) {
+      setIsSearchFocused(false);
+      searchRef.current?.blur();
+    }
   };
 
   const clearSearch = () => {
@@ -726,14 +742,20 @@ const Products: React.FC = () => {
         if (chosen) {
           const label = getSuggestionLabel(chosen);
           if (label) {
-            triggerSearch(label);
+            triggerSearch(label, {
+              blurInput: true,
+            });
             return;
           }
-          triggerSearch();
+          triggerSearch(undefined, {
+            blurInput: true,
+          });
           return;
         }
       }
-      triggerSearch();
+      triggerSearch(undefined, {
+        blurInput: true,
+      });
     } else if (e.key === "Escape") {
       setShowSuggestions(false);
       setHighlightIndex(-1);
@@ -843,6 +865,15 @@ const Products: React.FC = () => {
                   placeholder={t("productsPage.filters.searchPlaceholder")}
                   value={rawSearch}
                   autoComplete="off"
+                  onFocus={() => {
+                    setIsSearchFocused(true);
+                    if (rawSearch.trim()) {
+                      setShowSuggestions(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    setIsSearchFocused(false);
+                  }}
                   onChange={(e) => {
                     setRawSearch(e.target.value);
                     setShowSuggestions(true);
@@ -865,7 +896,11 @@ const Products: React.FC = () => {
                 <button
                   type="button"
                   className="h-9 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-                  onClick={() => triggerSearch()}
+                  onClick={() =>
+                    triggerSearch(undefined, {
+                      blurInput: true,
+                    })
+                  }
                   title={t("productsPage.filters.searchButtonTitle")}
                 >
                   {t("productsPage.filters.searchButtonTitle")}
@@ -898,7 +933,11 @@ const Products: React.FC = () => {
                         onMouseDown={(e) => {
                           e.preventDefault();
                           const label = getSuggestionLabel(s);
-                          if (label) triggerSearch(label);
+                          if (label) {
+                            triggerSearch(label, {
+                              blurInput: true,
+                            });
+                          }
                         }}
                         className={`px-3 py-2.5 cursor-pointer transition-colors ${
                           idx === highlightIndex
