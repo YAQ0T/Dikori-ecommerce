@@ -12,6 +12,7 @@ import clsx from "clsx";
 import { useCart } from "@/context/CartContext";
 import { useFavorites, type FavoriteProduct } from "@/context/FavoritesContext";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { getLocalizedText, type LocalizedText } from "@/lib/localized";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTranslation } from "@/i18n";
@@ -192,6 +193,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
   const [showDiscountTimer, setShowDiscountTimer] = useState(false);
 
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isMobileDetailsOpen, setIsMobileDetailsOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [quantityInput, setQuantityInput] = useState("1");
 
@@ -209,6 +211,7 @@ const ProductCard: React.FC<Props> = ({ product }) => {
 
   useEffect(() => {
     setIsDetailsOpen(false);
+    setIsMobileDetailsOpen(false);
   }, [product._id]);
 
   // جلب المتغيّرات
@@ -659,179 +662,316 @@ const ProductCard: React.FC<Props> = ({ product }) => {
     </div>
   );
 
+  const renderMobileSheetContent = () => (
+    <div
+      className="flex h-full flex-col"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        <div className="flex items-start justify-between gap-3 pr-10">
+          <div className="flex-1 text-right">
+            <h4 className="text-base font-semibold text-gray-900">{productName}</h4>
+            {productDescription && (
+              <p className="mt-1 line-clamp-3 text-[13px] leading-6 text-gray-600">
+                {productDescription}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            className={clsx(
+              "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition",
+              isFavoriteProduct
+                ? "border-red-500 bg-red-600 text-white hover:bg-red-500"
+                : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+            )}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleToggleFavorite();
+            }}
+            aria-label={
+              isFavoriteProduct
+                ? t("productCard.removeFavorite")
+                : t("productCard.addFavorite")
+            }
+          >
+            <Heart
+              className="h-4 w-4"
+              fill={isFavoriteProduct ? "currentColor" : "none"}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2">
+          <span className="text-sm font-medium text-gray-700">
+            {t("productCard.quantityLabel")}
+          </span>
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={decrementQuantity}
+              disabled={!canDecreaseQuantity}
+              className={clsx(
+                "inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 transition",
+                !canDecreaseQuantity
+                  ? "cursor-not-allowed opacity-40"
+                  : "hover:bg-gray-100"
+              )}
+              aria-label={t("productCard.decreaseQuantity", {
+                defaultValue: "Decrease quantity",
+              })}
+            >
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={quantityInput}
+              onChange={handleQuantityInputChange}
+              onBlur={handleQuantityBlur}
+              className="h-10 w-16 rounded-md border border-gray-200 bg-white text-center text-base font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-300"
+              aria-label={t("productCard.quantityInput", {
+                defaultValue: "Quantity",
+              })}
+            />
+            <button
+              type="button"
+              onClick={incrementQuantity}
+              disabled={!canIncreaseQuantity}
+              className={clsx(
+                "inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 transition",
+                !canIncreaseQuantity
+                  ? "cursor-not-allowed opacity-40"
+                  : "hover:bg-gray-100"
+              )}
+              aria-label={t("productCard.increaseQuantity", {
+                defaultValue: "Increase quantity",
+              })}
+            >
+              <ChevronUp className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        {currentVariant?.trackQuantity === true && (
+          <p className="mt-2 text-right text-xs text-gray-500">
+            {maxSelectableQuantity > 0
+              ? locale === "he"
+                ? `זמין: ${maxSelectableQuantity}`
+                : `المتاح: ${maxSelectableQuantity}`
+              : t("productCard.outOfStock")}
+          </p>
+        )}
+      </div>
+
+      <div className="border-t border-gray-100 bg-white px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <Button
+          onClick={() => {
+            void addItemToCart();
+          }}
+          disabled={isAdding || isVariantUnavailable}
+          className={clsx(
+            "h-11 w-full transition-transform duration-200",
+            justAdded &&
+              "scale-[1.02] ring-2 ring-green-400 ring-offset-2 ring-offset-white bg-green-600 text-white",
+            isAdding && "cursor-not-allowed opacity-80"
+          )}
+        >
+          {justAdded ? (
+            <span className="flex items-center justify-center gap-1.5">
+              <Check className="h-4 w-4" />
+              {t("productCard.addedToCart")}
+            </span>
+          ) : isVariantUnavailable ? (
+            t("productCard.outOfStock")
+          ) : isAdding ? (
+            <span className="flex items-center justify-center gap-1.5">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {t("productCard.addingToCart")}
+            </span>
+          ) : (
+            t("productCard.addToCart")
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       {/* ============ موبايل ============ */}
-      <div
-        className={clsx(
-          "relative surface-card p-0 overflow-hidden text-right flex flex-col md:hidden cursor-pointer transition-all duration-300",
-          isDetailsOpen && "ring-2 ring-black/10"
-        )}
-        onClick={() => {
-          if (isDetailsOpen) return;
-          navigate(`/products/${product._id}`);
-        }}
-      >
-        {/* محتوى البطاقة */}
+      <Sheet open={isMobileDetailsOpen} onOpenChange={setIsMobileDetailsOpen}>
         <div
           className={clsx(
-            "flex flex-col transform transition-all duration-300 ease-out",
-            isDetailsOpen
-              ? "blur-sm scale-[0.97] pointer-events-none"
-              : "scale-100"
+            "relative surface-card p-0 overflow-hidden text-right flex flex-col md:hidden cursor-pointer transition-all duration-300",
+            isMobileDetailsOpen && "ring-2 ring-black/10"
           )}
+          onClick={() => {
+            if (isMobileDetailsOpen) return;
+            navigate(`/products/${product._id}`);
+          }}
         >
-          <div className="relative w-full aspect-square overflow-hidden bg-white">
-            {displayedImages.map((src, index) => (
-              <img
-                key={`${src}-${index}`}
-                src={src}
-                alt={productName}
-                className={clsx(
-                  "absolute inset-0 w-full h-full object-cover transition-all duration-500",
-                  {
-                    "opacity-100 translate-x-0 z-10": index === currentImage,
-                    "opacity-0 translate-x-full z-0": index > currentImage,
-                    "opacity-0 -translate-x-full z-0": index < currentImage,
-                  }
-                )}
-                loading="lazy"
-                decoding="async"
-                sizes="(max-width: 768px) 50vw, 33vw"
-                width={640}
-                height={800}
-                draggable={false}
-              />
-            ))}
+          {/* محتوى البطاقة */}
+          <div className="flex flex-col transform transition-all duration-300 ease-out">
+            <div className="relative w-full aspect-square overflow-hidden bg-white">
+              {displayedImages.map((src, index) => (
+                <img
+                  key={`${src}-${index}`}
+                  src={src}
+                  alt={productName}
+                  className={clsx(
+                    "absolute inset-0 w-full h-full object-cover transition-all duration-500",
+                    {
+                      "opacity-100 translate-x-0 z-10": index === currentImage,
+                      "opacity-0 translate-x-full z-0": index > currentImage,
+                      "opacity-0 -translate-x-full z-0": index < currentImage,
+                    }
+                  )}
+                  loading="lazy"
+                  decoding="async"
+                  sizes="(max-width: 768px) 50vw, 33vw"
+                  width={640}
+                  height={800}
+                  draggable={false}
+                />
+              ))}
 
-            {displayedImages.length > 1 && (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    prevImage();
-                  }}
-                  aria-label={t("productCard.previousImage")}
-                  className={clsx(arrowBase, arrowSize, "left-2 text-white")}
-                >
-                  <svg
-                    className={arrowIcon}
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    width="18"
-                    height="18"
-                    fill="currentColor"
+              {displayedImages.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      prevImage();
+                    }}
+                    aria-label={t("productCard.previousImage")}
+                    className={clsx(arrowBase, arrowSize, "left-2 text-white")}
                   >
-                    <path d="M12.707 15.707a1 1 0 0 1-1.414 0l-5-5a1 1 0 0 1 0-1.414l5-5a1 1 0 1 1 1.414 1.414L8.414 10l4.293 4.293a1 1 0 0 1 0 1.414z" />
-                  </svg>
-                </button>
+                    <svg
+                      className={arrowIcon}
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      width="18"
+                      height="18"
+                      fill="currentColor"
+                    >
+                      <path d="M12.707 15.707a1 1 0 0 1-1.414 0l-5-5a1 1 0 0 1 0-1.414l5-5a1 1 0 1 1 1.414 1.414L8.414 10l4.293 4.293a1 1 0 0 1 0 1.414z" />
+                    </svg>
+                  </button>
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    nextImage();
-                  }}
-                  aria-label={t("productCard.nextImage")}
-                  className={clsx(arrowBase, arrowSize, "right-2 text-white")}
-                >
-                  <svg
-                    className={arrowIcon}
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    width="18"
-                    height="18"
-                    fill="currentColor"
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      nextImage();
+                    }}
+                    aria-label={t("productCard.nextImage")}
+                    className={clsx(arrowBase, arrowSize, "right-2 text-white")}
                   >
-                    <path d="M7.293 4.293a1 1 0 0 1 1.414 0l5 5a1 1 0 0 1 0 1.414l-5 5A1 1 0 1 1 7.293 14.293L11.586 10 7.293 5.707a1 1 0 0 1 0-1.414z" />
-                  </svg>
-                </button>
-              </>
-            )}
-
-            <button
-              type="button"
-              className={clsx(
-                "absolute top-2 left-2 z-30 inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition",
-                isFavoriteProduct
-                  ? "bg-red-600 text-white border-red-500 hover:bg-red-500"
-                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                    <svg
+                      className={arrowIcon}
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      width="18"
+                      height="18"
+                      fill="currentColor"
+                    >
+                      <path d="M7.293 4.293a1 1 0 0 1 1.414 0l5 5a1 1 0 0 1 0 1.414l-5 5A1 1 0 1 1 7.293 14.293L11.586 10 7.293 5.707a1 1 0 0 1 0-1.414z" />
+                    </svg>
+                  </button>
+                </>
               )}
-              onClick={(event) => {
-                event.stopPropagation();
-                handleToggleFavorite();
-              }}
-              aria-label={
-                isFavoriteProduct
-                  ? t("productCard.removeFavorite")
-                  : t("productCard.addFavorite")
-              }
-            >
-              <Heart
-                className="h-4 w-4"
-                fill={isFavoriteProduct ? "currentColor" : "none"}
-                aria-hidden="true"
-              />
-            </button>
-
-            {discountActive && discountPercent !== null && (
-              <span className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded z-20">
-                -{discountPercent}%
-              </span>
-            )}
-          </div>
-
-          <div className="px-3 pb-3 pt-2">
-            <div className="flex items-start justify-between gap-1.5">
-              <span className="block text-sm font-medium mb-1 line-clamp-2">
-                {productName}
-              </span>
 
               <button
                 type="button"
                 className={clsx(
-                  "shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 shadow-sm transition",
-                  "hover:bg-gray-100 active:scale-95",
-                  isDetailsOpen &&
-                    "bg-black text-white hover:bg-black border-black shadow-md"
+                  "absolute top-2 left-2 z-30 inline-flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition",
+                  isFavoriteProduct
+                    ? "bg-red-600 text-white border-red-500 hover:bg-red-500"
+                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
                 )}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsDetailsOpen(true);
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleToggleFavorite();
                 }}
-                aria-label={t("productCard.addToCart")}
-                aria-pressed={isDetailsOpen}
-                title={t("productCard.addToCart")}
+                aria-label={
+                  isFavoriteProduct
+                    ? t("productCard.removeFavorite")
+                    : t("productCard.addFavorite")
+                }
               >
-                <ShoppingBag
-                  className={clsx(
-                    "h-4 w-4 transition-transform duration-300",
-                    isDetailsOpen && "scale-110"
-                  )}
+                <Heart
+                  className="h-4 w-4"
+                  fill={isFavoriteProduct ? "currentColor" : "none"}
                   aria-hidden="true"
                 />
               </button>
+
+              {discountActive && discountPercent !== null && (
+                <span className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded z-20">
+                  -{discountPercent}%
+                </span>
+              )}
             </div>
 
-            <div className="mt-1">
-              <div className="flex items-baseline gap-1.5">
-                {typeof variantCompare === "number" &&
-                variantCompare > displayPrice ? (
-                  <>
-                    <span className="text-gray-500 line-through">
-                      ₪{variantCompare}
-                    </span>
+            <div className="px-3 pb-3 pt-2">
+              <div className="flex items-start justify-between gap-1.5">
+                <span className="block text-sm font-medium mb-1 line-clamp-2">
+                  {productName}
+                </span>
+
+                <button
+                  type="button"
+                  className={clsx(
+                    "shrink-0 inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 shadow-sm transition",
+                    "hover:bg-gray-100 active:scale-95",
+                    isMobileDetailsOpen &&
+                      "bg-black text-white hover:bg-black border-black shadow-md"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMobileDetailsOpen(true);
+                  }}
+                  aria-label={t("productCard.addToCart")}
+                  aria-pressed={isMobileDetailsOpen}
+                  title={t("productCard.addToCart")}
+                >
+                  <ShoppingBag
+                    className={clsx(
+                      "h-4 w-4 transition-transform duration-300",
+                      isMobileDetailsOpen && "scale-110"
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+
+              <div className="mt-1">
+                <div className="flex items-baseline gap-1.5">
+                  {typeof variantCompare === "number" &&
+                  variantCompare > displayPrice ? (
+                    <>
+                      <span className="text-gray-500 line-through">
+                        ₪{variantCompare}
+                      </span>
+                      <span className="font-semibold text-base">₪{displayPrice}</span>
+                    </>
+                  ) : (
                     <span className="font-semibold text-base">₪{displayPrice}</span>
-                  </>
-                ) : (
-                  <span className="font-semibold text-base">₪{displayPrice}</span>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {renderExpandedPanel("md:hidden")}
-      </div>
+        <SheetContent
+          side="bottom"
+          className="md:hidden h-auto max-h-[85svh] rounded-t-3xl border-t border-gray-200 bg-white p-0 pt-6 [&>button]:top-5 [&>button]:right-4"
+        >
+          {renderMobileSheetContent()}
+        </SheetContent>
+      </Sheet>
 
       {/* ============ ديسكتوب ============ */}
       <div
