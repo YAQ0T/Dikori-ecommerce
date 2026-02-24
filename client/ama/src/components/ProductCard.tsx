@@ -12,7 +12,12 @@ import clsx from "clsx";
 import { useCart } from "@/context/CartContext";
 import { useFavorites, type FavoriteProduct } from "@/context/FavoritesContext";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { getLocalizedText, type LocalizedText } from "@/lib/localized";
 import { useLanguage } from "@/context/LanguageContext";
 import { useTranslation } from "@/i18n";
@@ -969,6 +974,10 @@ const ProductCard: React.FC<Props> = ({ product }) => {
           side="bottom"
           className="md:hidden h-auto max-h-[85svh] rounded-t-3xl border-t border-gray-200 bg-white p-0 pt-6 [&>button]:top-5 [&>button]:right-4"
         >
+          <SheetTitle className="sr-only">{productName}</SheetTitle>
+          <SheetDescription className="sr-only">
+            {productDescription ?? t("productCard.addToCart")}
+          </SheetDescription>
           {renderMobileSheetContent()}
         </SheetContent>
       </Sheet>
