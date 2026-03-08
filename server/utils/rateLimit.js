@@ -16,6 +16,8 @@ function createRateLimiter({
 
   return function rateLimiter(req, res, next) {
     try {
+      if (req.method === "OPTIONS") return next();
+
       const key = keyGenerator(req);
       if (!key) return next();
 

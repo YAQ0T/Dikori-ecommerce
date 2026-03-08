@@ -27,7 +27,11 @@ router.post("/", contactLimiter, validateBody(contactSchema), async (req, res) =
   const { name, email, message, recaptchaToken } = req.body || {};
 
   try {
-    // Optional reCAPTCHA verification if token + secret exist
+    // If a server secret is configured, require a client token.
+    if (process.env.RECAPTCHA_SECRET && !recaptchaToken) {
+      return res.status(400).json({ error: "reCAPTCHA token is required" });
+    }
+
     if (recaptchaToken && process.env.RECAPTCHA_SECRET) {
       try {
         const verifyUrl = "https://www.google.com/recaptcha/api/siteverify";

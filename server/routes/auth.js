@@ -7,6 +7,7 @@ const User = require("../models/User");
 const { getJwtSecret } = require("../utils/config");
 const { sendSMSHTD, normalizePhone } = require("../utils/smsHtd");
 const { createRateLimiter } = require("../utils/rateLimit");
+const { verifyToken } = require("../middleware/authMiddleware");
 const { validateBody, z } = require("../utils/validate");
 
 const router = express.Router();
@@ -438,6 +439,38 @@ router.post("/login", limiterLogin, validateBody(loginSchema), async (req, res) 
 });
 
 /* =========================
+   جلب المستخدم الحالي
+========================= */
+router.get("/me", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "توكن غير صالح أو منتهي" });
+    }
+
+    const user = await User.findById(userId)
+      .select("_id name email phone role phoneVerified")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "المستخدم غير موجود" });
+    }
+
+    return res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email || null,
+      phone: user.phone || null,
+      role: user.role || "user",
+      phoneVerified: user.phoneVerified === true,
+    });
+  } catch (err) {
+    console.error("auth/me error:", err);
+    return res.status(500).json({ message: "تعذر جلب بيانات المستخدم" });
+  }
+});
+
+/* =========================
    نسيت كلمة المرور — طلب كود
 ========================= */
 router.post(
@@ -531,9 +564,12 @@ router.post(
     if (!ok) {
       user.resetPasswordAttempts = attempts + 1;
       await user.save();
-      return res
-        .status(429)
-        .json({ message: RESET_PASSWORD_THROTTLE_MESSAGE });
+      if (user.resetPasswordAttempts >= RESET_PASSWORD_MAX_ATTEMPTS) {
+        return res
+          .status(429)
+          .json({ message: RESET_PASSWORD_THROTTLE_MESSAGE });
+      }
+      return res.status(400).json({ message: "رمز غير صحيح أو منتهي" });
     }
 
     const newPassword = String(password);

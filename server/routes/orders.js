@@ -17,6 +17,7 @@ const Variant = require("../models/Variant");
 const User = require("../models/User");
 const DiscountRule = require("../models/DiscountRule");
 const { verifyRecaptchaToken } = require("../utils/recaptcha");
+const { verifyHumanProofPayload } = require("../utils/humanProof");
 const {
   ensureLocalizedObject,
   hasAnyTranslation,
@@ -41,6 +42,12 @@ const orderItemSchema = z.object({
   measure: z.string().nullable().optional(),
 });
 
+const humanProofSchema = z.object({
+  challengeToken: z.string().trim().min(1).max(512),
+  nonce: z.union([z.string(), z.number()]),
+  action: z.string().trim().max(64).optional(),
+});
+
 const orderCreateSchema = z
   .object({
     address: z.string().trim().min(1),
@@ -52,6 +59,7 @@ const orderCreateSchema = z
     recaptchaToken: z.string().optional(),
     recaptchaAction: z.string().optional(),
     recaptchaMinScore: z.coerce.number().optional(),
+    humanProof: humanProofSchema.optional(),
     discount: z.record(z.any()).optional(),
   })
   .passthrough();
@@ -70,16 +78,8 @@ const prepareCardSchema = orderCreateSchema.extend({
 const idParamSchema = z.object({ id: z.string().min(1) });
 const referenceParamSchema = z.object({ reference: z.string().min(1) });
 
-const isIOSAppRequest = (req) => {
-  if (!req || typeof req.get !== "function") {
-    return false;
-  }
-
-  const header = req.get("x-dikori-client") || req.get("x-app-client");
-  if (!header) return false;
-
-  return String(header).trim().toLowerCase() === "ios-app";
-};
+const isAuthenticatedOrderRequest = (req) =>
+  Boolean(req?.user && typeof req.user.id === "string" && req.user.id.trim());
 
 async function ensureRecaptcha(req, res) {
   if (
@@ -89,13 +89,53 @@ async function ensureRecaptcha(req, res) {
     return true;
   }
 
-  if (isIOSAppRequest(req)) {
+  // Authenticated users already passed JWT verification in verifyTokenOptional.
+  if (isAuthenticatedOrderRequest(req)) {
     return true;
   }
 
   const action = isNonEmpty(req.body?.recaptchaAction)
     ? String(req.body.recaptchaAction).trim()
     : DEFAULT_RECAPTCHA_ACTION;
+  const humanProof = req.body?.humanProof;
+  if (humanProof && typeof humanProof === "object") {
+    try {
+      verifyHumanProofPayload({
+        proof: humanProof,
+        expectedAction: action,
+      });
+      return true;
+    } catch (err) {
+      const status = err?.statusCode || 400;
+      if (status >= 500) {
+        console.error("Human proof verification error:", err);
+      }
+      res.status(status >= 500 ? 500 : 400).json({
+        message: "فشل التحقق الأمني",
+        error: err?.code || "HUMAN_PROOF_FAILED",
+        ...(err?.details ? { details: err.details } : {}),
+      });
+      return false;
+    }
+  }
+
+  if (!isNonEmpty(req.body?.recaptchaToken)) {
+    res.status(400).json({
+      message: "مطلوب reCAPTCHA أو human proof",
+      error: "MISSING_BOT_PROOF",
+    });
+    return false;
+  }
+
+  if (!process.env.RECAPTCHA_SECRET) {
+    res.status(503).json({
+      message:
+        "خدمة reCAPTCHA غير مهيأة على الخادم. استخدم human proof للطلبات من التطبيق.",
+      error: "RECAPTCHA_NOT_CONFIGURED",
+    });
+    return false;
+  }
+
   const requestedMinScore = Number(req.body?.recaptchaMinScore);
   const minScore =
     Number.isFinite(requestedMinScore) && requestedMinScore >= 0
