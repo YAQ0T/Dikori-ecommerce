@@ -1,11 +1,31 @@
 // src/lib/api.ts
 import axios from "axios";
 
-const RAW_BASE = (
-  import.meta.env.VITE_API_BASE?.toString() ||
-  import.meta.env.VITE_API_URL?.toString() ||
-  "http://localhost:3001"
-).replace(/\/+$/, "");
+const trimTrailingSlashes = (value: string) => value.replace(/\/+$/, "");
+const envBase =
+  import.meta.env.VITE_API_BASE?.toString().trim() ||
+  import.meta.env.VITE_API_URL?.toString().trim() ||
+  "";
+
+const RAW_BASE = trimTrailingSlashes(
+  envBase ||
+    (import.meta.env.PROD ? window.location.origin : "http://localhost:3001")
+);
+
+let parsedBase: URL;
+try {
+  parsedBase = new URL(RAW_BASE);
+} catch {
+  throw new Error(
+    `Invalid API base URL "${RAW_BASE}". Set VITE_API_BASE to an absolute URL.`
+  );
+}
+
+if (import.meta.env.PROD && parsedBase.protocol !== "https:") {
+  throw new Error(
+    `In production, VITE_API_BASE must use HTTPS. Received: ${parsedBase.href}`
+  );
+}
 
 export const API_BASE = `${RAW_BASE}/api`;
 
